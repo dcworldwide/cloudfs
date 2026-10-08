@@ -229,8 +229,8 @@ export const ScrollViewport = styled(ScrollArea.Viewport)`
 `;
 
 export const RowButton = styled(BaseButton, {
-  shouldForwardProp: (prop) => prop !== "selected",
-})<{ selected?: boolean }>`
+  shouldForwardProp: (prop) => prop !== "selected" && prop !== "dropTarget",
+})<{ selected?: boolean; dropTarget?: boolean }>`
   min-height: 40px;
   width: 100%;
   display: grid;
@@ -241,7 +241,9 @@ export const RowButton = styled(BaseButton, {
   border: 0;
   border-bottom: 1px solid ${({ theme }) => theme.color.border};
   padding: 0 ${({ theme }) => theme.space.md}px;
-  background: ${({ theme, selected }) => (selected ? theme.color.primary : "transparent")};
+  background: ${({ theme, selected, dropTarget }) =>
+    dropTarget ? theme.color.surface : selected ? theme.color.primary : "transparent"};
+  box-shadow: ${({ theme, dropTarget }) => (dropTarget ? `inset 0 0 0 2px ${theme.color.primary}` : "none")};
   color: ${({ theme, selected }) => (selected ? theme.color.primaryText : theme.color.text)};
   font: 400 13px ${({ theme }) => theme.font};
   cursor: pointer;

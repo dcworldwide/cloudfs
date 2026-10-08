@@ -4,10 +4,12 @@ import { useNavigate } from "react-router-dom";
 import type { ProviderId } from "../../core/store";
 import { api } from "../api";
 import { useConfig } from "../state";
+import { AzureIcon, ComputerIcon, GcsIcon, S3Icon, TrashIcon } from "../ui/icons";
 import { Muted, Stack } from "../ui/layout";
 import { Modal } from "../ui/Modal";
 import {
   Button,
+  IconButton,
   Dialog,
   DialogBackdrop,
   DialogDescription,
@@ -21,29 +23,99 @@ import {
 } from "../ui/primitives";
 
 const Page = styled.div`
-  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: ${({ theme }) => theme.space.lg}px;
+`;
+
+const SourceList = styled.div`
+  display: flex;
+  flex-direction: column;
+  border: 1px solid ${({ theme }) => theme.color.border};
+  border-radius: ${({ theme }) => theme.radius}px;
+  overflow: hidden;
 `;
 
 const SourceRow = styled.div`
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: ${({ theme }) => theme.space.md}px;
   align-items: center;
-  min-height: 40px;
+  min-height: 52px;
+  padding: 0 ${({ theme }) => theme.space.md}px;
+  & + & {
+    border-top: 1px solid ${({ theme }) => theme.color.border};
+  }
 `;
 
-const ProviderGrid = styled.div`
+const Mark = styled.span`
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: ${({ theme }) => theme.color.bg};
+`;
+
+const SectionLabel = styled.h2`
+  margin: ${({ theme }) => theme.space.sm}px 0 0;
+  color: ${({ theme }) => theme.color.muted};
+  font: 600 11px ${({ theme }) => theme.font};
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+`;
+
+const SourceName = styled.span`
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  font: 500 14px ${({ theme }) => theme.font};
+`;
+
+const SourceMeta = styled.span`
+  color: ${({ theme }) => theme.color.muted};
+  font: 400 12px ${({ theme }) => theme.font};
+`;
+
+const ProviderList = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: ${({ theme }) => theme.space.sm}px;
 `;
+
+const ProviderButton = styled(Button)`
+  min-height: 84px;
+  width: 100%;
+  flex-direction: column;
+  gap: 6px;
+  padding: ${({ theme }) => theme.space.sm}px;
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+`;
+
+function vendorIcon(id: ProviderId) {
+  if (id === "s3") return <S3Icon />;
+  if (id === "azure") return <AzureIcon />;
+  if (id === "gcs") return <GcsIcon />;
+  return <ComputerIcon />;
+}
+
+const VENDOR_NAME: Record<ProviderId, string> = {
+  local: "This Computer",
+  s3: "Amazon S3",
+  azure: "Azure",
+  gcs: "Google Cloud",
+};
 
 const REGIONS = ["us-east-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-southeast-2"];
 
 export function AddStore() {
   const navigate = useNavigate();
   const { refresh, accounts } = useConfig();
-  const [view, setView] = useState<"list" | "add">("list");
   const [providers, setProviders] = useState<{ id: ProviderId; label: string; available: boolean }[]>([]);
   const [unavailable, setUnavailable] = useState<string | null>(null);
   const [provider, setProvider] = useState<ProviderId | null>(null);
@@ -97,7 +169,7 @@ export function AddStore() {
     try {
       await api().saveAccount(input);
       await refresh();
-      setView("list");
+      setProvider(null);
       setDisplayName("");
       setAccessKeyId("");
       setSecretAccessKey("");
@@ -117,37 +189,52 @@ export function AddStore() {
     >
     <Page>
       <Stack>
-        {view === "list" ? (
-          <Stack>
+        <SectionLabel>Saved on this computer</SectionLabel>
+        <SourceList>
+          <SourceRow>
+            <Mark>
+              <ComputerIcon />
+            </Mark>
+            <SourceName>This Computer</SourceName>
+            <SourceMeta>local</SourceMeta>
+          </SourceRow>
+          {accounts.length === 0 ? (
             <SourceRow>
-              <span>This Computer</span>
-              <Muted>local</Muted>
+              <Mark />
+              <Muted>No cloud sources yet.</Muted>
+              <span />
             </SourceRow>
-            {accounts.length === 0 ? <Muted>No cloud sources yet.</Muted> : null}
-            {accounts.map((account) => (
-              <SourceRow key={account.id}>
-                <span>
-                  {account.displayName} · {account.region ?? account.provider} · secret {account.hasSecret ? "saved" : "missing"}
-                </span>
-                <Button variant="danger" onClick={() => void api().removeAccount(account.id).then(refresh)}>
-                  Delete
-                </Button>
-              </SourceRow>
-            ))}
-            <Button variant="action" onClick={() => setView("add")}>
-              Add
-            </Button>
-          </Stack>
-        ) : null}
-        {view === "add" ? (
-          <>
-        <ProviderGrid>
-          {providers.map((item) => (
-            <Button key={item.id} variant={provider === item.id ? "action" : "normal"} onClick={() => choose(item.id, item.available, item.label)}>
-              {item.label}
-            </Button>
+          ) : null}
+          {accounts.map((account) => (
+            <SourceRow key={account.id}>
+              <Mark>{vendorIcon(account.provider)}</Mark>
+              <SourceName>
+                {account.displayName}
+                <SourceMeta>
+                  {account.region ?? account.provider} · secret {account.hasSecret ? "saved" : "missing"}
+                </SourceMeta>
+              </SourceName>
+              <IconButton
+                title="Delete source"
+                aria-label={`Delete ${account.displayName}`}
+                variant="danger"
+                onClick={() => void api().removeAccount(account.id).then(refresh)}
+              >
+                <TrashIcon />
+              </IconButton>
+            </SourceRow>
           ))}
-        </ProviderGrid>
+        </SourceList>
+        <SectionLabel>Add a source</SectionLabel>
+        <ProviderList>
+          {providers.map((item) => (
+            <ProviderButton key={item.id} variant={provider === item.id ? "action" : "normal"} onClick={() => choose(item.id, item.available, item.label)}>
+              {vendorIcon(item.id)}
+              <span>{VENDOR_NAME[item.id]}</span>
+              <SourceMeta>{item.available ? "" : "Soon"}</SourceMeta>
+            </ProviderButton>
+          ))}
+        </ProviderList>
         {provider === "s3" ? (
           <Stack>
             <FieldRoot>
@@ -189,13 +276,8 @@ export function AddStore() {
               <Button variant="action" disabled={busy} onClick={() => void save()}>
                 Save store
               </Button>
-              <Button variant="normal" onClick={() => setView("list")}>
-                Back
-              </Button>
             </div>
           </Stack>
-        ) : null}
-          </>
         ) : null}
       </Stack>
       <Dialog.Root open={unavailable != null} onOpenChange={(open) => !open && setUnavailable(null)}>

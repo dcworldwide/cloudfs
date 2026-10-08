@@ -77,6 +77,40 @@ export function MoveIcon() {
   );
 }
 
+/** Amazon S3 smile mark. Drawn as a compact vendor glyph, not the wordmark. */
+export function S3Icon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#FF9900" d="M12 2.2 3.2 6.4v7.2c0 5 3.7 8.2 8.8 9.2 5.1-1 8.8-4.2 8.8-9.2V6.4L12 2.2Z" />
+      <path fill="none" stroke="#232F3E" strokeWidth="1.6" strokeLinecap="round" d="M7.2 13.2c1.4 1.5 3 2.3 4.8 2.3s3.4-.8 4.8-2.3" />
+      <path fill="none" stroke="#232F3E" strokeWidth="1.6" strokeLinecap="round" d="M8.4 10.2c1 1.1 2.2 1.7 3.6 1.7s2.6-.6 3.6-1.7" />
+    </svg>
+  );
+}
+
+/** Microsoft Azure mark: the four-square cloud glyph in the vendor blue. */
+export function AzureIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#0078D4" d="M10.6 3.2 3.4 17.6h4.2L13.2 6.4 10.6 3.2Z" />
+      <path fill="#50E6FF" d="M13.4 8.2 8.8 17.6h11.8L13.4 8.2Z" />
+      <path fill="#0078D4" d="M11.2 17.6h9.4l-2.2 3.2H8.6l2.6-3.2Z" />
+    </svg>
+  );
+}
+
+/** Google Cloud Storage mark: the four Google colors as a bucket glyph. */
+export function GcsIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M12 3.2 6.2 6.4v4.2L12 13.8l5.8-3.2V6.4L12 3.2Z" />
+      <path fill="#34A853" d="M6.2 11.4v6.2L12 20.8v-6.4L6.2 11.4Z" />
+      <path fill="#FBBC05" d="M12 14.4v6.4l5.8-3.2v-6.2L12 14.4Z" />
+      <path fill="#EA4335" d="M12 8.6 8.4 10.6 12 12.6l3.6-2L12 8.6Z" />
+    </svg>
+  );
+}
+
 export function CloudIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">

@@ -141,7 +141,10 @@ export interface AppConfig {
 
 /** Session view of one pane. Stored with the tab so a reload restores it. */
 export interface PaneView {
+  /** Filter for the path this pane is showing now. */
   filter: string;
+  /** Filters remembered per location, so leaving a folder clears the box and returning restores it. */
+  filters?: Record<string, string>;
   selected: string[];
   scroll: number;
 }
@@ -154,9 +157,27 @@ export interface PaneState {
   view?: PaneView;
 }
 
+/** Identity of the folder a pane is listing. Filter memory is keyed on this. */
+export function locationKey(pane: Pick<PaneState, "storeId" | "container" | "prefix">): string {
+  return `${pane.storeId}\0${pane.container}\0${pane.prefix}`;
+}
+
+function savedFilters(view: PaneView | undefined): Record<string, string> {
+  const filters = view?.filters;
+  if (!filters || typeof filters !== "object") return {};
+  const next: Record<string, string> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    if (typeof value === "string" && value) next[key] = value;
+  }
+  return next;
+}
+
 export function paneView(pane: PaneState): PaneView {
+  const filters = savedFilters(pane.view);
+  const here = locationKey(pane);
   return {
-    filter: pane.view?.filter ?? "",
+    filter: filters[here] ?? "",
+    filters,
     selected: Array.isArray(pane.view?.selected) ? pane.view.selected : [],
     scroll: typeof pane.view?.scroll === "number" && pane.view.scroll >= 0 ? pane.view.scroll : 0,
   };

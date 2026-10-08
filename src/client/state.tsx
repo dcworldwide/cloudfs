@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState, ListedEntry, PaneLocator, TransferInput } from "../../electron/preload";
 import type { PaneState, PaneView, PublicAccount, TransferJob, WorkspaceTab } from "../core/store";
-import { paneView } from "../core/store";
+import { locationKey, paneView } from "../core/store";
 import { api } from "./api";
 
 interface ConfigValue {
@@ -50,7 +50,38 @@ function freshTab(home: string, storeId: string): WorkspaceTab {
 }
 
 function emptyView(): PaneView {
-  return { filter: "", selected: [], scroll: 0 };
+  return { filter: "", filters: {}, selected: [], scroll: 0 };
+}
+
+/** Tabs saved before per-path filters stored one string. Attach it to the path it was saved with. */
+function adoptLegacyFilters(tab: WorkspaceTab): WorkspaceTab {
+  const adopt = (pane: PaneState): PaneState => {
+    if (pane.view?.filters || !pane.view?.filter) return pane;
+    return { ...pane, view: rememberFilter(pane, pane.view.filter) };
+  };
+  return { ...tab, left: adopt(tab.left), right: adopt(tab.right) };
+}
+
+function rememberFilter(pane: PaneState, value: string): PaneView {
+  const view = paneView(pane);
+  const filters = { ...view.filters };
+  const here = locationKey(pane);
+  if (value) filters[here] = value;
+  else delete filters[here];
+  return { ...view, filter: value, filters };
+}
+
+/** Filter the box is showing. Tab persistence trails the box, so read the input when leaving a path. */
+function liveFilterValue(side: "left" | "right"): string | null {
+  const node = document.querySelector(`[data-pane="${side}"] input[placeholder="Type to filter"]`);
+  return node instanceof HTMLInputElement ? node.value : null;
+}
+
+/** Apply the filter the box is showing now. Tab persistence trails the box by a debounce. */
+function withLiveFilter(pane: PaneState, tabId: string, side: "left" | "right", live: Record<string, string>): PaneState {
+  const value = live[`${tabId}:${side}`];
+  if (value === undefined || value === paneView(pane).filter) return pane;
+  return { ...pane, view: rememberFilter(pane, value) };
 }
 
 function withView(pane: PaneState, patch: Partial<PaneView>): PaneState {
@@ -107,13 +138,15 @@ export function AppStateProvider({ initial, children }: { initial: AppState; chi
   const [state, setState] = useState(initial);
   const [tabs, setTabs] = useState<WorkspaceTab[]>(() =>
     (initial.tabs as WorkspaceTab[] | undefined)?.length
-      ? (initial.tabs as WorkspaceTab[])
+      ? (initial.tabs as WorkspaceTab[]).map(adoptLegacyFilters)
       : [freshTab(initial.home, "local")],
   );
   const [activeId, setActiveId] = useState(initial.activeTabId ?? tabs[0]?.id ?? "");
   const [jobs, setJobs] = useState<TransferJob[]>([]);
   const [selection, setSelectionState] = useState<Record<string, string[]>>(() => viewsFrom(tabs).selection);
   const [filters, setFilters] = useState<Record<string, string>>(() => viewsFrom(tabs).filters);
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
   const [scrolls, setScrolls] = useState<Record<string, number>>(() => viewsFrom(tabs).scrolls);
   const scrollsRef = useRef(scrolls);
   scrollsRef.current = scrolls;
@@ -138,7 +171,12 @@ export function AppStateProvider({ initial, children }: { initial: AppState; chi
       const live = readLiveScroll(scrollsRef.current, displayedRefId.current);
       scrollsRef.current = live;
       setScrolls(live);
-      void api().saveTabs(stampScroll(tabs, live), activeId);
+      const stamped = stampScroll(tabs, live).map((tab) => ({
+        ...tab,
+        left: withLiveFilter(tab.left, tab.id, "left", filtersRef.current),
+        right: withLiveFilter(tab.right, tab.id, "right", filtersRef.current),
+      }));
+      void api().saveTabs(stamped, activeId);
     }, 300);
     return () => clearTimeout(handle);
   }, [tabs, activeId]);
@@ -183,12 +221,19 @@ export function AppStateProvider({ initial, children }: { initial: AppState; chi
       },
       updatePane: (side, patch) => {
         const id = displayed.id;
+        let restored = "";
         setTabs((current) =>
-          current.map((tab) =>
-            tab.id === id ? { ...tab, [side]: withView({ ...tab[side], ...patch }, { selected: [], scroll: 0 }) } : tab,
-          ),
+          current.map((tab) => {
+            if (tab.id !== id) return tab;
+            const typed = liveFilterValue(side);
+            const source = typed === null ? tab[side] : { ...tab[side], view: rememberFilter(tab[side], typed) };
+            const nextPane = withView({ ...source, ...patch }, { selected: [], scroll: 0 });
+            restored = nextPane.view?.filter ?? "";
+            return { ...tab, [side]: nextPane };
+          }),
         );
         setSelectionState((current) => ({ ...current, [paneKey(id, side)]: [] }));
+        setFilters((current) => ({ ...current, [paneKey(id, side)]: restored }));
         setScrolls((current) => ({ ...current, [paneKey(id, side)]: 0 }));
       },
       selection,
@@ -204,7 +249,9 @@ export function AppStateProvider({ initial, children }: { initial: AppState; chi
       setFilter: (tabId, side, value) => {
         setFilters((current) => ({ ...current, [paneKey(tabId, side)]: value }));
         setTabs((current) =>
-          current.map((tab) => (tab.id === tabId ? { ...tab, [side]: withView(tab[side], { filter: value, scroll: 0 }) } : tab)),
+          current.map((tab) =>
+            tab.id === tabId ? { ...tab, [side]: { ...tab[side], view: { ...rememberFilter(tab[side], value), scroll: 0 } } } : tab,
+          ),
         );
         setScrolls((current) => ({ ...current, [paneKey(tabId, side)]: 0 }));
       },

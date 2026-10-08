@@ -123,6 +123,27 @@ interface Clipboard {
   mode: "copy" | "move";
 }
 
+/** A listing shows this transfer when the object left it or arrived in it. */
+export function transferTouches(
+  locator: PaneLocator,
+  job: { source: { storeId: string; container: string; key: string }; dest: { storeId: string; container: string; key: string } },
+): boolean {
+  const parent = (key: string) => {
+    if (locator.provider === "local") return key.slice(0, key.lastIndexOf("/")) || "/";
+    const slash = key.lastIndexOf("/");
+    return slash < 0 ? "" : key.slice(0, slash + 1);
+  };
+  const same = (side: { storeId: string; container: string; key: string }) =>
+    side.storeId === locator.storeId && side.container === locator.container && parent(side.key) === locator.prefix;
+  return same(job.source) || same(job.dest);
+}
+
+/** A folder row in the same listing is a destination. Dropping on the pane itself is not. */
+export function folderDest(pane: PaneState, folder: ClipItem): PaneState {
+  const prefix = pane.provider === "local" ? folder.key : folder.key.endsWith("/") ? folder.key : `${folder.key}/`;
+  return { ...pane, prefix };
+}
+
 /** One place that turns a source item into a copy or move job. */
 export function transferItems(
   source: PaneState,
@@ -133,6 +154,7 @@ export function transferItems(
   if (dest.provider !== "local" && !dest.container) return [];
   return items
     .filter((item) => !(source.storeId === dest.storeId && source.prefix === dest.prefix && source.container === dest.container))
+    .filter((item) => item.key !== dest.prefix && `${item.key}/` !== dest.prefix)
     .map((item) => {
       const destKey = dest.provider === "local" ? `${dest.prefix.replace(/\/$/, "")}/${item.name}` : `${dest.prefix}${item.name}`;
       const kind = move
@@ -251,6 +273,7 @@ function FilePane({
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [dropMode, setDropMode] = useState<"copy" | "move" | null>(null);
+  const [dropKey, setDropKey] = useState<string | null>(null);
   const paneId = `${tab.id}:${side}`;
   const selected = workspace.selection[paneId] ?? [];
   const savedScroll = workspace.scrollOf(tab.id, side);
@@ -351,6 +374,24 @@ function FilePane({
       void api().unwatch(dir);
     };
   }, [pane.provider, pane.prefix, reload]);
+
+  const jobs = useQueue().jobs;
+  const seenJobs = useRef(new Map<string, string>());
+  useEffect(() => {
+    let touched = false;
+    const live = new Set(jobs.map((job) => job.id));
+    for (const job of jobs) {
+      const previous = seenJobs.current.get(job.id);
+      if (previous !== job.status && (job.status === "done" || job.status === "error" || job.status === "cancelled")) {
+        if (transferTouches(locator, job)) touched = true;
+      }
+      seenJobs.current.set(job.id, job.status);
+    }
+    for (const id of [...seenJobs.current.keys()]) {
+      if (!live.has(id)) seenJobs.current.delete(id);
+    }
+    if (touched) reload();
+  }, [jobs, locator, reload]);
 
   const visible = entries.filter((entry) => entry.name.toLowerCase().includes(filter.toLowerCase()));
 
@@ -467,16 +508,23 @@ function FilePane({
         event.preventDefault();
         if (event.dataTransfer.types.includes("application/cloudfs")) setDropMode(event.shiftKey ? "move" : "copy");
       }}
-      onDragLeave={() => setDropMode(null)}
+      onDragLeave={() => {
+        setDropMode(null);
+        setDropKey(null);
+      }}
       onDrop={(event) => {
         event.preventDefault();
         setDropMode(null);
+        setDropKey(null);
         const raw = event.dataTransfer.getData("application/cloudfs");
         if (!raw) return;
         const payload = JSON.parse(raw) as { side: "left" | "right"; keys: ClipItem[] };
-        if (payload.side === side) return;
+        const folder = (event.target as HTMLElement).closest("[data-folder]")?.getAttribute("data-folder");
+        const target = folder ? entries.find((entry) => entry.key === folder && entry.kind === "folder") : undefined;
+        if (payload.side === side && !target) return;
         const source = workspace.displayed[payload.side];
-        for (const job of transferItems(source, pane, payload.keys, event.shiftKey)) {
+        const dest = target ? folderDest(pane, target) : pane;
+        for (const job of transferItems(source, dest, payload.keys, event.shiftKey)) {
           void api().transfer(job);
         }
       }}
@@ -614,8 +662,25 @@ function FilePane({
                 render={
               <RowButton
                 data-key={entry.key}
+                data-folder={entry.kind === "folder" ? entry.key : undefined}
                 selected={selected.includes(entry.key)}
+                dropTarget={dropKey === entry.key}
                 draggable
+                onDragOver={
+                  entry.kind === "folder"
+                    ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setDropKey(entry.key);
+                        setDropMode(event.shiftKey ? "move" : "copy");
+                      }
+                    : undefined
+                }
+                onDragLeave={
+                  entry.kind === "folder"
+                    ? () => setDropKey((current) => (current === entry.key ? null : current))
+                    : undefined
+                }
                 onDragStart={(event) => {
                   const keys = selected.includes(entry.key)
                     ? entries.filter((item) => selected.includes(item.key)).map((item) => ({ key: item.key, name: item.name }))
