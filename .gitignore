@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+*.log
+.DS_Store
+.env
+*.p12
+*.pfx
+*.p8

@@ -1,0 +1,51 @@
+{
+  "name": "cloudfs",
+  "version": "0.1.0",
+  "description": "Local cloud file explorer for S3 and, later, other stores.",
+  "author": "Cloudfs",
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true,
+  "main": "dist/electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cloudfs/cloudfs.git"
+  },
+  "scripts": {
+    "start": "npm run build:electron && concurrently -k -n vite,app \"vite\" \"wait-on tcp:127.0.0.1:5173 file:dist/electron/main.js && electron .\"",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build:renderer": "vite build",
+    "build": "npm run build:electron && npm run build:renderer",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit --pretty false && tsc -p tsconfig.electron.json --noEmit --pretty false",
+    "dist": "npm run build && electron-builder --dir",
+    "dist:publish": "npm run build && electron-builder --publish always"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.716.0",
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "@base-ui/react": "^1.0.0-beta.4",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "happy-dom": "^16.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.8",
+    "wait-on": "^8.0.1"
+  }
+}

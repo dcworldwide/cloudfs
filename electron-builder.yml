@@ -1,0 +1,32 @@
+appId: app.cloudfs.desktop
+productName: Cloudfs
+copyright: Copyright © Cloudfs
+directories:
+  output: release
+files:
+  - dist/**/*
+  - package.json
+asar: true
+mac:
+  category: public.app-category.utilities
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: electron/entitlements.mac.plist
+  entitlementsInherit: electron/entitlements.mac.plist
+  notarize: true
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+publish:
+  provider: github
+  releaseType: release
