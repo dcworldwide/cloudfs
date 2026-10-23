@@ -88,17 +88,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          shopt -s globstar nullglob
-          echo "version $(node -p "require('./package.json').version")"
-          for file in release/**/app-update.yml; do
-            echo "# $file"
-            cat "$file"
-          done
-          echo "--- metadata ---"
-          for file in release-upload/latest*.yml; do
-            echo "# $file"
-            cat "$file"
-          done
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const version = JSON.parse(fs.readFileSync("package.json", "utf8")).version;
+          console.log(`version ${version}`);
+          function walk(dir) {
+            for (const name of fs.readdirSync(dir)) {
+              const full = path.join(dir, name);
+              if (fs.statSync(full).isDirectory()) walk(full);
+              else if (name === "app-update.yml") {
+                console.log(`# ${full}`);
+                console.log(fs.readFileSync(full, "utf8"));
+              }
+            }
+          }
+          walk("release");
+          console.log("--- metadata ---");
+          for (const name of fs.readdirSync("release-upload").filter((item) => item.startsWith("latest") && item.endsWith(".yml"))) {
+            const full = path.join("release-upload", name);
+            console.log(`# ${full}`);
+            console.log(fs.readFileSync(full, "utf8"));
+          }
+          NODE
 
       - uses: actions/upload-artifact@v4
         with:
