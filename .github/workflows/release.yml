@@ -1,46 +1,173 @@
+# Builds installers on every pull request and on every push to main.
+# A GitHub Release is created only from main (or a manual run on main).
+# The packaged version is {major}.{minor}.{github.run_number}. The run number
+# belongs to this workflow file, so do not rename it or the counter resets.
+
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
-  publish:
+  package:
+    name: Package (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            secrets_required: CSC_LINK
+          - os: ubuntu-latest
+            platform: linux
           - os: windows-latest
-            secrets_required: WIN_CSC_LINK
-    runs-on: ${{ matrix.os }}
+            platform: windows
+          - os: macos-latest
+            platform: mac
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - name: Require signing secrets
+
+      - name: Install Linux packaging tools
+        if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
+
+      - run: npm ci
+
+      - name: Set release version
+        shell: bash
+        run: node scripts/set-release-version.mjs "${{ github.run_number }}"
+
+      - name: Package
+        shell: bash
+        env:
+          # Pull requests do not receive signing secrets. On main, electron-builder
+          # signs when these are set and skips signing when they are empty.
+          CSC_LINK: ${{ github.event_name != 'pull_request' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.CSC_KEY_PASSWORD || '' }}
+          CSC_INSTALLER_LINK: ${{ github.event_name != 'pull_request' && secrets.CSC_INSTALLER_LINK || '' }}
+          CSC_INSTALLER_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.CSC_INSTALLER_KEY_PASSWORD || '' }}
+          WIN_CSC_LINK: ${{ github.event_name != 'pull_request' && secrets.WIN_CSC_LINK || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY: ${{ github.event_name != 'pull_request' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ github.event_name != 'pull_request' && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ github.event_name != 'pull_request' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ github.event_name != 'pull_request' && secrets.APPLE_TEAM_ID || '' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ github.event_name != 'pull_request' && (secrets.CSC_LINK != '' || secrets.WIN_CSC_LINK != '') && 'true' || 'false' }}
+        run: |
+          set -euo pipefail
+          # An empty string is not the same as unset. electron-builder would try
+          # to import a blank certificate and fail the macOS build.
+          for name in CSC_LINK CSC_KEY_PASSWORD CSC_INSTALLER_LINK CSC_INSTALLER_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              unset "$name"
+            fi
+          done
+          npm run dist:ci
+
+      - name: Collect publishable artifacts
+        shell: bash
+        run: node scripts/collect-release-artifacts.mjs "${{ matrix.platform }}"
+
+      - name: Show updater metadata
         shell: bash
         run: |
-          if [ -z "${REQUIRED}" ]; then
-            echo "Refusing to publish an unsigned build. Add the signing secrets listed in the README."
-            exit 1
-          fi
-        env:
-          REQUIRED: ${{ secrets[matrix.secrets_required] }}
-      - run: npm ci
-      - run: npm run dist:publish
+          set -euo pipefail
+          shopt -s globstar nullglob
+          echo "version $(node -p "require('./package.json').version")"
+          for file in release/**/app-update.yml; do
+            echo "# $file"
+            cat "$file"
+          done
+          echo "--- metadata ---"
+          for file in release-upload/latest*.yml; do
+            echo "# $file"
+            cat "$file"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloudfs-${{ matrix.platform }}
+          path: release-upload/
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: package
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Compute version
+        id: version
+        run: echo "version=$(node scripts/set-release-version.mjs --print "${{ github.run_number }}")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cloudfs-*
+          merge-multiple: true
+          path: release-upload
+
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          tag="v${version}"
+          for name in latest.yml latest-mac.yml latest-linux.yml; do
+            if [ ! -f "release-upload/$name" ]; then
+              echo "Refusing to publish without $name."
+              exit 1
+            fi
+          done
+          notes="$(mktemp)"
+          {
+            echo "Automated release of Cloudfs ${version}."
+            echo
+            echo "Built from commit ${GITHUB_SHA} by the Release workflow."
+            echo "The installers and updater metadata (latest.yml, latest-mac.yml, latest-linux.yml) are attached."
+            echo "Installed copies of Cloudfs check this release for a newer version."
+          } > "$notes"
+          if gh release view "$tag" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release delete "$tag" --repo "${GITHUB_REPOSITORY}" --yes --cleanup-tag
+          fi
+          shopt -s nullglob
+          files=(release-upload/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No artifacts to publish."
+            exit 1
+          fi
+          gh release create "$tag" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "Cloudfs ${version}" \
+            --notes-file "$notes" \
+            "${files[@]}"
+          draft="$(gh release view "$tag" --repo "${GITHUB_REPOSITORY}" --json isDraft,isPrerelease --jq 'if .isDraft or .isPrerelease then "yes" else "no" end')"
+          if [ "$draft" != "no" ]; then
+            echo "Release ${tag} is a draft or prerelease. The updater ignores those."
+            exit 1
+          fi
+          gh release view "$tag" --repo "${GITHUB_REPOSITORY}"

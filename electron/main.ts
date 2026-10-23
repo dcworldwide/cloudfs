@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { watch, type FSWatcher } from "node:fs";
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
@@ -9,7 +10,13 @@ import { UnavailableAdapter } from "../src/adapters/stub";
 import { configPathFor, loadConfig, saveConfig, saveJson } from "../src/core/config";
 import { AdapterRegistry } from "../src/core/registry";
 import { TransferCoordinator } from "../src/core/transfers";
-import { createUpdateController, UpdateController } from "../src/core/updater";
+import { createUpdateLogger } from "../src/core/update-log";
+import {
+  createStaticUpdateController,
+  createUpdateController,
+  packagedUpdateSkipReason,
+  UpdateController,
+} from "../src/core/updater";
 import {
   Account,
   AppConfig,
@@ -344,13 +351,45 @@ async function createWindow(): Promise<void> {
   }
 }
 
+function macAppIsSigned(): boolean {
+  try {
+    execFileSync("/usr/bin/codesign", ["--verify", "--strict", process.execPath], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function wireUpdates(): void {
-  if (isDev) return;
-  // Loaded only in a packaged app so dev does not require a published release.
-  const { autoUpdater } = require("electron-updater") as typeof import("electron-updater");
-  updates = createUpdateController(autoUpdater);
-  updates.onChange((snapshot) => send("update:change", snapshot));
-  void updates.check();
+  const log = createUpdateLogger(app.getPath("logs"));
+  const skip = packagedUpdateSkipReason({
+    packaged: app.isPackaged,
+    platform: process.platform,
+    macSigned: app.isPackaged && process.platform === "darwin" ? macAppIsSigned() : true,
+  });
+  if (skip) {
+    log.info(skip);
+    updates = createStaticUpdateController(skip);
+    return;
+  }
+  try {
+    // Loaded only in a packaged app so dev does not require a published release.
+    const { autoUpdater } = require("electron-updater") as typeof import("electron-updater");
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.logger = log;
+    updates = createUpdateController(autoUpdater, log);
+    updates.onChange((snapshot) => {
+      log.info(
+        `status ${snapshot.status}${snapshot.version ? ` ${snapshot.version}` : ""}${snapshot.message ? ` (${snapshot.message})` : ""}`,
+      );
+      send("update:change", snapshot);
+    });
+    void updates.check();
+  } catch (error) {
+    log.error(error);
+    updates = createStaticUpdateController("Updates could not be started. See the updater log for details.");
+  }
 }
 
 app.whenReady().then(async () => {
@@ -376,8 +415,8 @@ app.whenReady().then(async () => {
   });
   registerIpc();
   await coordinator.restore();
-  await createWindow();
   wireUpdates();
+  await createWindow();
 });
 
 app.on("window-all-closed", () => {
