@@ -2,6 +2,7 @@ import styled from "@emotion/styled";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { isHexColor } from "../../core/theme";
+import { updateDeferredMessage, updateStatusText } from "../../core/updater";
 import { useEffect } from "react";
 import { api } from "../api";
 import { useConfig } from "../state";
@@ -41,6 +42,7 @@ export function Settings() {
   const [confirmImport, setConfirmImport] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [update, setUpdate] = useState(state.update);
+  const [updateNote, setUpdateNote] = useState<string | null>(null);
 
   useEffect(() => api().onUpdate(setUpdate), []);
 
@@ -121,25 +123,25 @@ export function Settings() {
       </FieldRoot>
       <Stack>
         <Heading>Updates</Heading>
-        <Muted>
-          {update.status}
-          {update.version ? ` · ${update.version}` : ""}
-          {update.percent != null ? ` · ${Math.round(update.percent)}%` : ""}
-          {update.message ? ` · ${update.message}` : ""}
-        </Muted>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Button variant="normal" onClick={() => void api().checkForUpdates()}>
-            Check for updates
-          </Button>
-          <Button
-            variant="action"
-            onClick={async () => {
-              const result = await api().restartToUpdate();
-              setUpdate((current) => ({ ...current, message: result === "deferred" ? "Waiting for transfers to finish." : current.message }));
-            }}
-          >
-            Restart to update
-          </Button>
+        <Muted>{updateStatusText(update)}</Muted>
+        {updateNote ? <Muted>{updateNote}</Muted> : null}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {update.status === "idle" && update.message ? null : (
+            <Button variant="normal" onClick={() => void api().checkForUpdates()}>
+              Check for updates
+            </Button>
+          )}
+          {update.status === "ready" ? (
+            <Button
+              variant="action"
+              onClick={async () => {
+                const result = await api().restartToUpdate();
+                setUpdateNote(result === "deferred" ? updateDeferredMessage : null);
+              }}
+            >
+              Restart to update
+            </Button>
+          ) : null}
         </div>
       </Stack>
       {message ? <Muted>{message}</Muted> : null}

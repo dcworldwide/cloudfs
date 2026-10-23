@@ -6,6 +6,7 @@ import { api } from "./api";
 import { AddStore } from "./screens/AddStore";
 import { Explorer } from "./screens/Explorer";
 import { Settings } from "./screens/Settings";
+import { UpdateBanner } from "./screens/UpdateBanner";
 import { GearIcon } from "./ui/icons";
 import { AppStateProvider } from "./state";
 import { AppThemeProvider } from "./theme-context";
@@ -60,6 +61,7 @@ function Shell({ state }: { state: AppState }) {
               </IconButton>
             </Row>
           </TopBar>
+          <UpdateBanner />
           <Routes>
             <Route path="/" element={<Explorer />} />
             <Route path="/stores/new" element={<Explorer />} />
