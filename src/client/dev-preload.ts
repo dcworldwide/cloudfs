@@ -34,7 +34,7 @@ const state: AppState = {
   ],
   activeTabId: restored?.activeTabId ?? "tab-1",
   version: "0.1.0",
-  update: { status: "idle" },
+  update: previewUpdate(new URLSearchParams(location.search).get("update")),
 };
 
 const local: ListedEntry[] = [
@@ -57,6 +57,19 @@ const objects: ListedEntry[] = [
 
 const jobs: TransferJob[] = [];
 const jobListeners = new Set<(jobs: TransferJob[]) => void>();
+const updateListeners = new Set<(snapshot: AppState["update"]) => void>();
+
+function previewUpdate(value: string | null): AppState["update"] {
+  if (value === "ready") return { status: "ready", version: "0.1.99", percent: 100 };
+  if (value === "downloading") return { status: "downloading", version: "0.1.99", percent: 42 };
+  if (value === "error") return { status: "error", message: "Could not reach GitHub Releases." };
+  return { status: "idle" };
+}
+
+function setUpdate(next: AppState["update"]): void {
+  state.update = next;
+  for (const listener of updateListeners) listener(next);
+}
 
 const api: CloudfsApi = {
   getState: async () => ({ ...state, accounts: [...state.accounts] }),
@@ -152,14 +165,26 @@ const api: CloudfsApi = {
     state.activeTabId = activeTabId;
     sessionStorage.setItem("cloudfs-preview-tabs", JSON.stringify({ tabs, activeTabId }));
   },
-  checkForUpdates: async () => undefined,
-  restartToUpdate: async () => "deferred",
+  checkForUpdates: async () => {
+    setUpdate({ status: "checking" });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    setUpdate({ status: "idle" });
+  },
+  restartToUpdate: async () => {
+    if (state.update.status !== "ready") return "deferred";
+    if (jobs.length > 0) return "deferred";
+    setUpdate({ status: "idle" });
+    return "restarted";
+  },
   onFsChange: () => () => undefined,
   onJobs: (listener) => {
     jobListeners.add(listener);
     return () => jobListeners.delete(listener);
   },
-  onUpdate: () => () => undefined,
+  onUpdate: (listener) => {
+    updateListeners.add(listener);
+    return () => updateListeners.delete(listener);
+  },
   onState: () => () => undefined,
   onFlushTabs: () => () => undefined,
 };

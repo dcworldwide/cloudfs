@@ -1,6 +1,9 @@
 appId: app.cloudfs.desktop
 productName: Cloudfs
 copyright: Copyright © Cloudfs
+# GitHub release asset names only allow [A-Za-z0-9._-]. A safe name here keeps
+# the file on disk identical to the name written into latest*.yml.
+artifactName: ${name}-${version}-${os}-${arch}.${ext}
 directories:
   output: release
 files:
@@ -13,6 +16,7 @@ mac:
   gatekeeperAssess: false
   entitlements: electron/entitlements.mac.plist
   entitlementsInherit: electron/entitlements.mac.plist
+  # Notarize when Apple credentials are present, and skip when they are not.
   notarize: true
   target:
     - target: dmg
@@ -27,6 +31,13 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+linux:
+  category: Utility
+  target:
+    - target: AppImage
+      arch: [x64]
 publish:
   provider: github
+  owner: dcworldwide
+  repo: cloudfs
   releaseType: release
