@@ -1,8 +1,10 @@
 import { FileType, type FileInfo } from "basic-ftp";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Readable } from "node:stream";
-import { FtpAdapter, ftpPath, type FtpSession } from "./ftp";
 import type { Account } from "../core/store";
+import { TestFtpServer } from "../testing/ftp-server";
+import { bufferStream, readAll } from "../testing/streams";
+import { FtpAdapter, ftpPath, type FtpSession } from "./ftp";
 
 const account: Account = {
   id: "ftp-1",
@@ -89,5 +91,58 @@ describe("FtpAdapter", () => {
     );
     await adapter.put(account, "", "incoming/a.txt", Readable.from(["hi"]), {});
     expect(target).toBe("/incoming/a.txt");
+  });
+});
+
+describe("FtpAdapter against a loopback server", () => {
+  const server = new TestFtpServer();
+  const adapter = new FtpAdapter();
+  let live: Account = account;
+
+  beforeAll(async () => {
+    const port = await server.start();
+    live = { ...account, settings: { ...account.settings, host: "127.0.0.1", port, password: "secret" } };
+  });
+
+  afterAll(async () => {
+    await server.stop();
+  });
+
+  it("lists, writes, reads, mkdirs, renames, stats, and deletes", async () => {
+    const body = Buffer.alloc(64 * 1024, 3);
+    await adapter.mkdir(live, "", "incoming");
+    await adapter.put(live, "", "incoming/notes.txt", bufferStream(body, 4096), { size: body.length });
+    const entries = await adapter.list(live, "", "incoming");
+    expect(entries.map((entry) => entry.name)).toEqual(["notes.txt"]);
+    expect(entries[0]).toMatchObject({ kind: "file", size: body.length });
+    expect(await readAll(await adapter.get(live, "", "incoming/notes.txt"))).toEqual(body);
+    expect(await adapter.stat(live, "", "incoming/notes.txt")).toMatchObject({ exists: true, kind: "file", size: body.length });
+    server.commands.length = 0;
+    await adapter.copy(live, {
+      from: { storeId: live.id, provider: "ftp", container: "", key: "incoming/notes.txt" },
+      to: { storeId: live.id, provider: "ftp", container: "", key: "incoming/moved.txt" },
+      move: true,
+      size: body.length,
+    });
+    expect(server.commands).toContain("RNFR");
+    expect(server.commands).not.toContain("RETR");
+    expect(server.read("/incoming/moved.txt")).toEqual(body);
+    expect(server.exists("/incoming/notes.txt")).toBe(false);
+    await adapter.remove(live, "", ["incoming/moved.txt"]);
+    expect(await adapter.stat(live, "", "incoming/moved.txt")).toEqual({ exists: false });
+    expect(await adapter.stat(live, "", "incoming")).toMatchObject({ exists: true, kind: "folder" });
+  });
+
+  it("reports a missing file, a permission failure, and a dropped connection", async () => {
+    expect(await adapter.stat(live, "", "missing.txt")).toEqual({ exists: false });
+    await expect(readAll(await adapter.get(live, "", "missing.txt"))).rejects.toThrow(/550|No such file/);
+    server.write("/secret.txt", "nope");
+    server.deny("/secret.txt");
+    await expect(readAll(await adapter.get(live, "", "secret.txt"))).rejects.toThrow(/Permission denied/);
+    server.allow("/secret.txt");
+    server.write("/drop.txt", "abcdef");
+    server.dropNext = true;
+    await expect(readAll(await adapter.get(live, "", "drop.txt"))).rejects.toThrow(/426|ECONNRESET|aborted|closed/i);
+    expect(server.read("/drop.txt")).toEqual(Buffer.from("abcdef"));
   });
 });

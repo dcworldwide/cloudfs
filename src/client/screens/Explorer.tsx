@@ -479,6 +479,18 @@ function FilePane({
     if (clipboard.mode === "move") setClipboard(null);
   }
 
+  function sendToOther(keys: string[], mode: "copy" | "move") {
+    const items = entries.filter((entry) => keys.includes(entry.key)).map((entry) => ({ key: entry.key, name: entry.name }));
+    if (!items.length) return;
+    const other = workspace.displayed[side === "left" ? "right" : "left"];
+    const jobs = transferItems(pane, other, items, mode === "move");
+    if (!jobs.length) {
+      notify(toasts, "error", "Choose a folder on the other side first.");
+      return;
+    }
+    for (const job of jobs) void api().transfer(job);
+  }
+
   function deleteKeys(keys: string[]) {
     for (const key of keys) {
       const name = key.split("/").filter(Boolean).at(-1) ?? "item";
@@ -564,6 +576,22 @@ function FilePane({
           ) : null}
           <IconButton title="New folder" aria-label="New folder" onClick={() => setCreating(true)}>
             <PlusIcon />
+          </IconButton>
+          <IconButton
+            title={`Copy to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
+            aria-label={`Copy to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
+            disabled={selected.length === 0}
+            onClick={() => sendToOther(selected, "copy")}
+          >
+            <CopyIcon />
+          </IconButton>
+          <IconButton
+            title={`Move to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
+            aria-label={`Move to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
+            disabled={selected.length === 0}
+            onClick={() => sendToOther(selected, "move")}
+          >
+            <MoveIcon />
           </IconButton>
           <IconButton
             title="Delete"
@@ -729,6 +757,12 @@ function FilePane({
                     </MenuItem>
                     <MenuItem disabled={!clipboard} onClick={pasteClipboard}>
                       Paste
+                    </MenuItem>
+                    <MenuItem onClick={() => sendToOther(selected.includes(entry.key) ? selected : [entry.key], "copy")}>
+                      Copy to other side
+                    </MenuItem>
+                    <MenuItem onClick={() => sendToOther(selected.includes(entry.key) ? selected : [entry.key], "move")}>
+                      Move to other side
                     </MenuItem>
                     <MenuItem
                       onClick={() => {

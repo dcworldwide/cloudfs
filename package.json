@@ -1,7 +1,7 @@
 {
   "name": "cloudfs",
   "version": "0.1.0",
-  "description": "Local cloud file explorer for S3 and, later, other stores.",
+  "description": "Local desktop file explorer for this computer, Amazon S3, and FTP.",
   "author": "Cloudfs",
   "engines": {
     "node": ">=20"

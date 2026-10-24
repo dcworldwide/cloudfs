@@ -9,7 +9,8 @@ import { LocalAdapter } from "../src/adapters/local"
 import { S3Adapter } from "../src/adapters/s3"
 import { UnavailableAdapter } from "../src/adapters/stub"
 import { configPathFor, loadConfig, saveConfig, saveJson } from "../src/core/config"
-import { folderKey, parentPrefix, renamedKey } from "../src/core/paths"
+import { folderKey } from "../src/core/paths"
+import { renameEntry } from "../src/core/rename-entry"
 import { AdapterRegistry } from "../src/core/registry"
 import {
   Account,
@@ -268,25 +269,15 @@ function registerIpc(): void {
   })
 
   ipcMain.handle("fs:rename", async (_event, locator: PaneState, from: string, to: string) => {
-    const name = to.replace(/[\\/]/g, "").trim()
-    if (!name) throw new Error("A name is required.")
-    if (locator.provider === "local") {
-      await local.rename(from, path.join(path.dirname(from), name))
-      return
-    }
-    const account = coordinator.account(locator.storeId)
-    const parent = parentPrefix(locator.provider, from)
-    const dest = renamedKey(locator.provider, from, name)
-    const adapter = registry.get(locator.provider)
-    const existing = await adapter.list(account, locator.container, parent)
-    if (existing.some((entry) => entry.name === name && entry.key !== from)) {
-      throw new Error(`"${name}" already exists.`)
-    }
-    await adapter.copy(account, {
-      from: { storeId: account.id, provider: locator.provider, container: locator.container, key: from },
-      to: { storeId: account.id, provider: locator.provider, container: locator.container, key: dest },
+    await renameEntry({
+      local,
+      registry,
+      account: locator.provider === "local" ? null : coordinator.account(locator.storeId),
+      provider: locator.provider,
+      container: locator.container,
+      from,
+      toName: to,
     })
-    await adapter.remove(account, locator.container, [from])
   })
 
   ipcMain.handle("fs:remove", async (_event, locator: PaneState, keys: string[]) => {

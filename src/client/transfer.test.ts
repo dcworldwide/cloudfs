@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PaneState } from "../core/store";
 import { folderDest, transferItems, transferTouches } from "./screens/Explorer";
+import { transferRoute } from "./screens/QueueDrawer";
 
 const local: PaneState = { storeId: "local", provider: "local", container: "", prefix: "/home" };
 const cloud: PaneState = { storeId: "acc", provider: "s3", container: "photos", prefix: "" };
@@ -54,6 +55,38 @@ describe("transferItems", () => {
     expect(transferTouches(cloud, job)).toBe(true);
     expect(transferTouches({ ...cloud, prefix: "production/" }, job)).toBe(true);
     expect(transferTouches({ ...cloud, prefix: "uat/" }, job)).toBe(false);
+  });
+
+  it("builds a copy or move for every provider pair", () => {
+    const ftp: PaneState = { storeId: "ftp-1", provider: "ftp", container: "", prefix: "/incoming" };
+    const other: PaneState = { storeId: "s3-b", provider: "s3", container: "backup", prefix: "archive/" };
+    const panes = [local, cloud, ftp, other];
+    for (const source of panes) {
+      for (const dest of panes) {
+        if (source.storeId === dest.storeId && source.prefix === dest.prefix && source.container === dest.container) continue;
+        const item = source.provider === "local" ? items[0] : { key: "notes.txt", name: "notes.txt" };
+        if (!item) continue;
+        const [move] = transferItems(source, dest, [item], true);
+        const [copy] = transferItems(source, dest, [item], false);
+        expect(move?.kind).toBe("move");
+        expect(copy?.kind).toBe(
+          source.provider === "local" && dest.provider !== "local"
+            ? "upload"
+            : source.provider !== "local" && dest.provider === "local"
+              ? "download"
+              : "copy",
+        );
+        expect(move?.dest.provider).toBe(dest.provider);
+        expect(move?.source.provider).toBe(source.provider);
+      }
+    }
+  });
+
+  it("labels a cross-provider transfer in the queue", () => {
+    const [job] = transferItems(local, cloud, items, true);
+    expect(transferRoute(job)).toBe("This Computer → S3");
+    const [same] = transferItems(cloud, { ...cloud, prefix: "archive/" }, [{ key: "a.txt", name: "a.txt" }], true);
+    expect(transferRoute(same)).toBeNull();
   });
 
   it("does not move a folder into itself", () => {

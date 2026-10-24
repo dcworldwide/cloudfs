@@ -81,6 +81,14 @@ export interface CopyRequest {
   onProgress?: (bytesDone: number, bytesTotal?: number) => void;
 }
 
+/** Result of stat. `exists: false` is a missing path, not an error. */
+export interface EntryStat {
+  exists: boolean;
+  /** Byte length of a file. Omitted for folders and missing paths. */
+  size?: number;
+  kind?: "file" | "folder";
+}
+
 export interface StoreAdapter {
   id: ProviderId;
   label: string;
@@ -99,6 +107,12 @@ export interface StoreAdapter {
   remove(account: Account, container: string, keys: string[]): Promise<void>;
   copy(account: Account, request: CopyRequest): Promise<void>;
   mkdir(account: Account, container: string, prefix: string): Promise<void>;
+  stat(account: Account, container: string, key: string): Promise<EntryStat>;
+  /**
+   * When false, bytes cannot be piped straight into put and a transfer spools
+   * them through a temporary file. Omitted means the provider can stream.
+   */
+  streaming?: boolean;
   abortMultipart?(account: Account, container: string, key: string, uploadId: string): Promise<void>;
 }
 
@@ -217,6 +231,8 @@ export interface WorkspaceTab {
 export const DEFAULT_CONCURRENCY = 3;
 export const PART_SIZE = 8 * 1024 * 1024;
 export const MULTIPART_THRESHOLD = 8 * 1024 * 1024;
+/** CopyObject accepts at most 5 GiB. Larger objects use upload-part-copy. */
+export const S3_COPY_MAX_SINGLE = 5 * 1024 * 1024 * 1024;
 
 export function emptyConfig(): AppConfig {
   const tab: WorkspaceTab = {

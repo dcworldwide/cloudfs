@@ -1,9 +1,9 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { access, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, rename, rm, stat as fsStat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { Account, CopyRequest, Entry, GetOptions, PutOptions, StoreAdapter } from "../core/store";
+import type { Account, CopyRequest, Entry, EntryStat, GetOptions, PutOptions, StoreAdapter } from "../core/store";
 
 export class LocalAdapter implements StoreAdapter {
   id = "local" as const;
@@ -34,7 +34,7 @@ export class LocalAdapter implements StoreAdapter {
       if (name.startsWith(".")) continue;
       const full = path.join(dir, name);
       try {
-        const info = await stat(full);
+        const info = await fsStat(full);
         entries.push({
           name,
           key: full,
@@ -53,10 +53,14 @@ export class LocalAdapter implements StoreAdapter {
     await mkdir(path.dirname(key), { recursive: true });
     const flags = opts.resume && opts.resume.bytesDone > 0 ? "a" : "w";
     let bytesDone = opts.resume?.bytesDone ?? 0;
-    await pipeline(stream, createWriteStream(key, { flags }));
-    const info = await stat(key);
-    bytesDone = info.size;
-    opts.onProgress?.(bytesDone, opts.size);
+    const tap = new PassThrough();
+    tap.on("data", (chunk: Buffer | string) => {
+      bytesDone += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      opts.onProgress?.(bytesDone, opts.size);
+    });
+    await pipeline(stream, tap, createWriteStream(key, { flags }), { signal: opts.signal });
+    const info = await fsStat(key);
+    opts.onProgress?.(info.size, opts.size);
   }
 
   get(_account: Account, _container: string, key: string, opts?: GetOptions): Promise<Readable> {
@@ -79,6 +83,17 @@ export class LocalAdapter implements StoreAdapter {
 
   async mkdir(_account: Account, _container: string, prefix: string): Promise<void> {
     await mkdir(prefix, { recursive: true });
+  }
+
+  async stat(_account: Account, _container: string, key: string): Promise<EntryStat> {
+    try {
+      const info = await fsStat(key);
+      const folder = info.isDirectory();
+      return { exists: true, kind: folder ? "folder" : "file", size: folder ? undefined : info.size };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { exists: false };
+      throw error;
+    }
   }
 
   async rename(from: string, to: string): Promise<void> {

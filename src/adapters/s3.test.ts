@@ -1,6 +1,8 @@
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import type { Account } from "../core/store";
+import { MULTIPART_THRESHOLD, PART_SIZE, S3_COPY_MAX_SINGLE, type Account } from "../core/store";
+import { MemoryS3, s3Error } from "../testing/memory-s3";
+import { bufferStream, readAll } from "../testing/streams";
 import { S3Adapter } from "./s3";
 
 function account(): Account {
@@ -78,5 +80,84 @@ describe("S3Adapter", () => {
     });
     expect(sent[0]?.name).toBe("CopyObjectCommand");
     expect(sent[0]?.input.CopySource).toBe("photos/a.jpg");
+  });
+
+  it("copies objects larger than 5 GiB with upload-part-copy", async () => {
+    const sent: { name: string; input: Record<string, unknown> }[] = [];
+    const adapter = new S3Adapter(() => client(sent) as never);
+    await adapter.copy(account(), {
+      from: { storeId: "s3-1", provider: "s3", container: "photos", key: "huge.bin" },
+      to: { storeId: "s3-1", provider: "s3", container: "photos", key: "huge-copy.bin" },
+      size: S3_COPY_MAX_SINGLE + 1,
+    });
+    const copies = sent.filter((item) => item.name === "UploadPartCopyCommand");
+    expect(sent.map((item) => item.name)).toContain("CreateMultipartUploadCommand");
+    expect(sent.map((item) => item.name)).toContain("CompleteMultipartUploadCommand");
+    expect(copies).toHaveLength(Math.ceil((S3_COPY_MAX_SINGLE + 1) / PART_SIZE));
+    expect(copies[0]?.input.CopySourceRange).toBe(`bytes=0-${PART_SIZE - 1}`);
+    expect(sent.some((item) => item.name === "GetObjectCommand")).toBe(false);
+  });
+});
+
+describe("S3Adapter against in-memory S3", () => {
+  const memory = new MemoryS3();
+  const adapter = new S3Adapter(() => memory.client());
+
+  it("lists, writes, reads, stats, copies, and deletes", async () => {
+    memory.createBucket("photos");
+    const body = Buffer.from("picture");
+    await adapter.put(account(), "photos", "2024/a.jpg", Readable.from([body]), { size: body.length });
+    await adapter.mkdir(account(), "photos", "album/");
+    memory.pageSize = 1;
+    const entries = await adapter.list(account(), "photos", "");
+    memory.pageSize = 1000;
+    expect(entries.map((entry) => entry.name).sort()).toEqual(["2024", "album"]);
+    const nested = await adapter.list(account(), "photos", "2024/");
+    expect(nested.map((entry) => entry.name)).toEqual(["a.jpg"]);
+    expect(await readAll(await adapter.get(account(), "photos", "2024/a.jpg"))).toEqual(body);
+    expect(await adapter.stat(account(), "photos", "2024/a.jpg")).toMatchObject({ exists: true, kind: "file", size: body.length });
+    memory.calls.length = 0;
+    await adapter.copy(account(), {
+      from: { storeId: "s3-1", provider: "s3", container: "photos", key: "2024/a.jpg" },
+      to: { storeId: "s3-1", provider: "s3", container: "photos", key: "2024/b.jpg" },
+      size: body.length,
+    });
+    expect(memory.getObject("photos", "2024/b.jpg")).toEqual(body);
+    expect(memory.calls).toContain("CopyObjectCommand");
+    expect(memory.calls).not.toContain("GetObjectCommand");
+    await adapter.remove(account(), "photos", ["2024/a.jpg"]);
+    expect(await adapter.stat(account(), "photos", "2024/a.jpg")).toEqual({ exists: false });
+    expect(memory.getObject("photos", "2024/b.jpg")).toEqual(body);
+  });
+
+  it("stores a streamed multipart upload", async () => {
+    memory.createBucket("photos");
+    memory.calls.length = 0;
+    const body = Buffer.alloc(64 * 1024, 9);
+    await adapter.put(account(), "photos", "big.bin", bufferStream(body, 8 * 1024), { size: MULTIPART_THRESHOLD });
+    expect(memory.calls).toContain("CreateMultipartUploadCommand");
+    expect(memory.calls).toContain("CompleteMultipartUploadCommand");
+    expect(await readAll(await adapter.get(account(), "photos", "big.bin"))).toEqual(body);
+  });
+
+  it("stores an empty file with one PutObject", async () => {
+    memory.createBucket("photos");
+    memory.calls.length = 0;
+    await adapter.put(account(), "photos", "empty.txt", Readable.from([]), { size: 0 });
+    expect(memory.calls).toContain("PutObjectCommand");
+    expect(memory.calls).not.toContain("CreateMultipartUploadCommand");
+    expect(await adapter.stat(account(), "photos", "empty.txt")).toMatchObject({ exists: true, size: 0 });
+  });
+
+  it("reports a missing key, a permission failure, and a dropped connection", async () => {
+    memory.createBucket("photos");
+    expect(await adapter.stat(account(), "photos", "missing.txt")).toEqual({ exists: false });
+    await expect(adapter.get(account(), "photos", "missing.txt")).rejects.toMatchObject({ name: "NoSuchKey" });
+    memory.denied.add("photos/secret.txt");
+    memory.putObject("photos", "secret.txt", "nope");
+    await expect(adapter.get(account(), "photos", "secret.txt")).rejects.toMatchObject({ name: "AccessDenied" });
+    memory.denied.delete("photos/secret.txt");
+    memory.failNext = { command: "GetObjectCommand", error: s3Error("ECONNRESET", "read ECONNRESET", 500) };
+    await expect(adapter.get(account(), "photos", "secret.txt")).rejects.toThrow(/ECONNRESET/);
   });
 });

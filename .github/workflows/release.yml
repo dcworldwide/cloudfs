@@ -47,6 +47,12 @@ jobs:
 
       - run: npm ci
 
+      - name: Test
+        if: matrix.platform == 'linux'
+        run: |
+          npm run typecheck
+          npm test
+
       - name: Set release version
         shell: bash
         run: node scripts/set-release-version.mjs "${{ github.run_number }}"

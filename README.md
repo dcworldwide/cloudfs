@@ -1,6 +1,6 @@
 # Cloudfs
 
-A local desktop file explorer for Amazon S3, and later for other cloud file stores. It runs on your computer. Transfers go from this machine to the store. Credentials are not sent anywhere else.
+A local desktop file explorer for files on this computer, Amazon S3, and FTP. It runs on your computer. Transfers stay between the stores you connect. Credentials are not sent anywhere else.
 
 ## Run it
 
@@ -11,7 +11,7 @@ npm install
 npm start
 ```
 
-`npm start` opens the Electron window and loads the renderer from a local Vite server. `npm test` runs the unit tests. `npm run dist` builds an unpackaged app without certificates.
+`npm start` opens the Electron window and loads the renderer from a local Vite server. `npm test` runs the unit tests offline, with an in-memory S3 and a loopback FTP server. `npm run dist` builds an unpackaged app without certificates.
 
 ## Where configuration lives
 
@@ -29,7 +29,24 @@ Export writes a copy you choose. Import replaces the saved stores after a confir
 
 ## Stores
 
-S3 is the working adapter: display name, access key, secret, region, SSL, and an optional endpoint for S3-compatible stores such as MinIO or Wasabi. Azure Blob and Google Cloud Storage appear in the add-store list and open an info dialog. They do not collect credentials.
+This Computer browses a local folder. S3 takes a display name, access key, secret, region, SSL, and an optional endpoint for S3-compatible stores such as MinIO or Wasabi. FTP takes a host, port, user, password, and an optional start directory. Azure Blob and Google Cloud Storage appear in the add-store list and open an info dialog. They do not collect credentials.
+
+## Transfers
+
+Copy and move work between the two panes in either direction, including from one provider to another. The toolbar copies or moves the selection to the other side. Dragging copies; holding Shift while dragging moves. Cut, copy, and paste, and the context menu, do the same. The queue shows progress and can pause or cancel a transfer.
+
+Each pair uses the shortest path that still keeps the source until the destination is confirmed:
+
+| From | To | Copy | Move |
+|---|---|---|---|
+| This Computer | This Computer | read and write | rename, or copy and delete when the paths are on different drives |
+| S3 | same S3 account | CopyObject, or multipart copy above 5 GiB | server-side copy, then delete the source |
+| FTP | same FTP server | stream from one connection to another | rename |
+| any other pair | | stream source to destination | stream, then delete the source |
+
+A move deletes the source only after the destination exists and its size matches. If the write fails, is cancelled, or the size does not match, the source stays. A temporary file is used only when a provider cannot stream, and that file is removed when the transfer ends, including when it fails. S3 to S3 does not stage the object on local disk. Nothing in the tests needs a live cloud account.
+
+The Release workflow runs `npm test` on Linux before packaging. The Package (linux), Package (windows), and Package (mac) jobs keep their names. A failing test fails Package (linux).
 
 ## Releases and auto-update
 
@@ -86,7 +103,3 @@ If Actions cannot create releases, open Settings, then Actions, then General, th
 ## Sharing
 
 Share the repo. Someone else clones it, runs `npm install` and `npm start`, and gets their own config file. Installed copies come from the GitHub Release assets once a signed tag has been published.
-
-## Notes to self
-
-- Add FTP as a source. The app should allow for FTP as a source adaptor with a generic API for all sources.
