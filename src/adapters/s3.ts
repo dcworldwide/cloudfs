@@ -7,6 +7,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
+  HeadObjectCommand,
   ListBucketsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
@@ -20,16 +21,25 @@ import {
   CompletedPart,
   CopyRequest,
   Entry,
+  EntryStat,
   GetOptions,
   isS3Settings,
   MULTIPART_THRESHOLD,
   PART_SIZE,
   PutOptions,
+  S3_COPY_MAX_SINGLE,
   StoreAdapter,
 } from "../core/store";
 
 export interface S3ClientFactory {
   (account: Account): S3Client;
+}
+
+function isMissingObject(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = error instanceof Error ? error.name : "";
+  const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+  return name === "NotFound" || name === "NoSuchKey" || name === "NotFoundException" || status === 404;
 }
 
 function requireSettings(account: Account) {
@@ -75,6 +85,8 @@ export class S3Adapter implements StoreAdapter {
   id = "s3" as const;
   label = "Amazon S3";
   available = true;
+  /** False only when a caller must spool through a local file. Real S3 accepts a stream. */
+  streaming?: boolean;
 
   constructor(private factory: S3ClientFactory = createS3Client) {}
 
@@ -138,7 +150,9 @@ export class S3Adapter implements StoreAdapter {
   async put(account: Account, container: string, key: string, stream: Readable, opts: PutOptions): Promise<void> {
     const client = this.client(account);
     const size = opts.size ?? 0;
-    if (size > 0 && size < MULTIPART_THRESHOLD && !opts.resume) {
+    // A known size under the part threshold, including an empty file, is one PutObject.
+    // An unknown size stays on the multipart path so a long stream is not buffered whole.
+    if (opts.size != null && size < MULTIPART_THRESHOLD && !opts.resume) {
       const body = await readPart(stream, size, opts.signal);
       await client.send(
         new PutObjectCommand({
@@ -245,7 +259,7 @@ export class S3Adapter implements StoreAdapter {
     const client = this.client(account);
     const source = `${request.from.container}/${encodeURIComponent(request.from.key).replace(/%2F/g, "/")}`;
     const size = request.size ?? 0;
-    if (size > 5 * 1024 * 1024 * 1024) {
+    if (size > S3_COPY_MAX_SINGLE) {
       await this.multipartCopy(client, source, request);
       return;
     }
@@ -301,6 +315,21 @@ export class S3Adapter implements StoreAdapter {
   async mkdir(account: Account, container: string, prefix: string): Promise<void> {
     const key = prefixOf(prefix);
     await this.client(account).send(new PutObjectCommand({ Bucket: container, Key: key, Body: Buffer.alloc(0) }));
+  }
+
+  async stat(account: Account, container: string, key: string): Promise<EntryStat> {
+    try {
+      const result = await this.client(account).send(new HeadObjectCommand({ Bucket: container, Key: key }));
+      const folder = key.endsWith("/");
+      return {
+        exists: true,
+        kind: folder ? "folder" : "file",
+        size: folder ? undefined : result.ContentLength,
+      };
+    } catch (error) {
+      if (isMissingObject(error)) return { exists: false };
+      throw error;
+    }
   }
 
   async ensureBucket(account: Account, container: string): Promise<void> {

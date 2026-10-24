@@ -12,5 +12,6 @@
     "declaration": false,
     "types": ["node"]
   },
-  "include": ["electron/**/*.ts", "src/core/**/*.ts", "src/adapters/**/*.ts"]
+  "include": ["electron/**/*.ts", "src/core/**/*.ts", "src/adapters/**/*.ts"],
+  "exclude": ["**/*.test.ts", "src/testing/**/*.ts"]
 }

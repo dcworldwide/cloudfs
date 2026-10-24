@@ -1,4 +1,4 @@
-import type { Account, CopyRequest, Entry, GetOptions, PutOptions, StoreAdapter } from "../core/store";
+import type { Account, CopyRequest, Entry, EntryStat, GetOptions, PutOptions, StoreAdapter } from "../core/store";
 import type { Readable } from "node:stream";
 
 export class UnavailableAdapter implements StoreAdapter {
@@ -35,6 +35,9 @@ export class UnavailableAdapter implements StoreAdapter {
     this.refuse();
   }
   mkdir(_account: Account, _container: string, _prefix: string): Promise<void> {
+    this.refuse();
+  }
+  stat(_account: Account, _container: string, _key: string): Promise<EntryStat> {
     this.refuse();
   }
 }

@@ -1,7 +1,7 @@
 import styled from "@emotion/styled";
 import { keyframes } from "@emotion/react";
 import { useEffect, useState } from "react";
-import type { TransferJob } from "../../core/store";
+import type { ProviderId, TransferJob } from "../../core/store";
 import { CopyIcon, MoveIcon, TrashIcon } from "../ui/icons";
 import { useQueue } from "../state";
 import { Button, Progress, ProgressIndicator, ProgressTrack } from "../ui/primitives";
@@ -84,6 +84,21 @@ function label(job: TransferJob): string {
   return "Copy";
 }
 
+function providerName(provider: ProviderId): string {
+  if (provider === "local") return "This Computer";
+  if (provider === "s3") return "S3";
+  if (provider === "ftp") return "FTP";
+  if (provider === "azure") return "Azure";
+  return "Cloud Storage";
+}
+
+/** Shown when a job leaves one store for another. Same-store renames stay unlabeled. */
+export function transferRoute(job: Pick<TransferJob, "kind" | "source" | "dest">): string | null {
+  if (job.kind === "delete") return null;
+  if (job.source.provider === job.dest.provider && job.source.storeId === job.dest.storeId) return null;
+  return `${providerName(job.source.provider)} → ${providerName(job.dest.provider)}`;
+}
+
 export function QueueDrawer() {
   const queue = useQueue();
   const pending = queue.jobs.filter((job) => job.status === "running" || job.status === "queued" || job.status === "paused");
@@ -157,6 +172,9 @@ export function QueueDrawer() {
                     <span>
                       {label(job)} · {job.name}
                     </span>
+                    {transferRoute(job) ? (
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>{transferRoute(job)}</div>
+                    ) : null}
                   </div>
                   <Progress.Root value={percent(job)} style={{ marginTop: 6 }}>
                     <ProgressTrack>

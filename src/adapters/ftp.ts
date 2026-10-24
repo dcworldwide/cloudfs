@@ -1,6 +1,6 @@
 import { Client, FileType, type FileInfo } from "basic-ftp";
-import { PassThrough, Readable, Writable } from "node:stream";
-import type { Account, CopyRequest, Entry, GetOptions, PutOptions, StoreAdapter } from "../core/store";
+import { PassThrough, Readable, Transform, Writable } from "node:stream";
+import type { Account, CopyRequest, Entry, EntryStat, GetOptions, PutOptions, StoreAdapter } from "../core/store";
 import { isFtpSettings } from "../core/store";
 
 /** The slice of basic-ftp this adapter uses. Tests pass a fake. */
@@ -103,12 +103,41 @@ export class FtpAdapter implements StoreAdapter {
 
   async put(account: Account, _container: string, key: string, stream: Readable, opts: PutOptions): Promise<void> {
     await this.session(account, async (client, startDir) => {
+      if (opts.signal?.aborted) throw new Error("aborted");
+      // Count bytes in a transform. A "data" listener would drain the source
+      // before uploadFrom starts reading it, and the upload would be empty.
       let done = 0;
-      stream.on("data", (chunk: Buffer) => {
-        done += chunk.length;
-        opts.onProgress?.(done, opts.size);
+      const tap = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          done += chunk.length;
+          opts.onProgress?.(done, opts.size);
+          callback(null, chunk);
+        },
       });
-      await client.uploadFrom(stream, ftpPath(startDir, key));
+      const abort = () => {
+        const error = new Error("aborted");
+        stream.destroy(error);
+        tap.destroy(error);
+      };
+      opts.signal?.addEventListener("abort", abort, { once: true });
+      // uploadFrom is the only reader. Piping (not a second pipeline into `tap`)
+      // keeps the source from being drained before STOR starts.
+      let streamError: Error | undefined;
+      const note = (error: Error) => {
+        streamError ??= error;
+      };
+      stream.once("error", note);
+      tap.once("error", note);
+      stream.pipe(tap);
+      try {
+        await client.uploadFrom(tap, ftpPath(startDir, key));
+      } catch (error) {
+        throw streamError ?? error;
+      } finally {
+        opts.signal?.removeEventListener("abort", abort);
+        stream.unpipe(tap);
+      }
+      if (streamError) throw streamError;
       opts.onProgress?.(done, opts.size);
     });
   }
@@ -118,15 +147,35 @@ export class FtpAdapter implements StoreAdapter {
     const client = await this.factory(account);
     const out = new PassThrough();
     const remote = ftpPath(settings.startDir, key);
-    void client
-      .downloadTo(out, remote)
-      .catch((error: unknown) => out.destroy(error instanceof Error ? error : new Error("FTP download failed.")))
-      .finally(() => client.close());
+    // basic-ftp ends the destination in a finally block even when RETR fails.
+    // Forward bytes here, and end the caller's stream only after downloadTo settles,
+    // so a dropped connection is an error rather than an empty file.
+    const sink = new Writable({
+      write(chunk: Buffer, _encoding, callback) {
+        if (out.write(chunk)) callback();
+        else out.once("drain", callback);
+      },
+    });
+    sink.on("error", () => undefined);
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (error) out.destroy(error);
+      else out.end();
+      client.close();
+    };
+    void client.downloadTo(sink, remote).then(
+      () => finish(),
+      (error: unknown) => finish(error instanceof Error ? error : new Error("FTP download failed.")),
+    );
     if (opts?.signal) {
-      opts.signal.addEventListener("abort", () => {
-        out.destroy(new Error("aborted"));
-        client.close();
-      });
+      const abort = () => {
+        sink.destroy(new Error("aborted"));
+        finish(new Error("aborted"));
+      };
+      if (opts.signal.aborted) abort();
+      else opts.signal.addEventListener("abort", abort, { once: true });
     }
     return out;
   }
@@ -161,4 +210,36 @@ export class FtpAdapter implements StoreAdapter {
       await client.ensureDir(ftpPath(startDir, prefix));
     });
   }
+
+  async stat(account: Account, _container: string, key: string): Promise<EntryStat> {
+    return this.session(account, async (client, startDir) => {
+      const full = ftpPath(startDir, key);
+      const slash = full.lastIndexOf("/");
+      const parent = slash <= 0 ? "/" : full.slice(0, slash);
+      const name = full.slice(slash + 1);
+      let rows: FileInfo[];
+      try {
+        rows = await client.list(parent);
+      } catch (error) {
+        if (isFtpMissing(error)) return { exists: false };
+        throw error;
+      }
+      const match = rows.find((row) => row.name === name);
+      if (!match) return { exists: false };
+      const folder = match.type === FileType.Directory;
+      return {
+        exists: true,
+        kind: folder ? "folder" : "file",
+        size: folder || !Number.isFinite(match.size) ? undefined : match.size,
+      };
+    });
+  }
+}
+
+function isFtpMissing(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const message = error instanceof Error ? error.message : "";
+  if (/permission denied/i.test(message)) return false;
+  const code = (error as { code?: number }).code;
+  return code === 450 || code === 550;
 }
