@@ -59,13 +59,18 @@ export interface UpdateView {
 
 export interface AccountInput {
   id?: string;
-  provider: "s3";
+  provider: Exclude<ProviderId, "local">;
   displayName: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  region: string;
-  ssl: boolean;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  region?: string;
+  ssl?: boolean;
   endpoint?: string;
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  startDir?: string;
 }
 
 export interface PaneLocator {

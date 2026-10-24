@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import type { ProviderId } from "../../core/store";
 import { api } from "../api";
 import { useConfig } from "../state";
-import { AzureIcon, ComputerIcon, GcsIcon, S3Icon, TrashIcon } from "../ui/icons";
+import { AzureIcon, ComputerIcon, FtpIcon, GcsIcon, S3Icon, TrashIcon } from "../ui/icons";
 import { Muted, Stack } from "../ui/layout";
 import { Modal } from "../ui/Modal";
 import {
@@ -82,7 +82,7 @@ const SourceMeta = styled.span`
 
 const ProviderList = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
   gap: ${({ theme }) => theme.space.sm}px;
 `;
 
@@ -101,6 +101,7 @@ function vendorIcon(id: ProviderId) {
   if (id === "s3") return <S3Icon />;
   if (id === "azure") return <AzureIcon />;
   if (id === "gcs") return <GcsIcon />;
+  if (id === "ftp") return <FtpIcon />;
   return <ComputerIcon />;
 }
 
@@ -109,6 +110,7 @@ const VENDOR_NAME: Record<ProviderId, string> = {
   s3: "Amazon S3",
   azure: "Azure",
   gcs: "Google Cloud",
+  ftp: "FTP",
 };
 
 const REGIONS = ["us-east-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-southeast-2"];
@@ -125,6 +127,11 @@ export function AddStore() {
   const [region, setRegion] = useState("us-east-1");
   const [ssl, setSsl] = useState(true);
   const [endpoint, setEndpoint] = useState("");
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("21");
+  const [ftpUser, setFtpUser] = useState("anonymous");
+  const [password, setPassword] = useState("");
+  const [startDir, setStartDir] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -140,15 +147,26 @@ export function AddStore() {
     setProvider(id);
   }
 
-  const input = {
-    provider: "s3" as const,
-    displayName,
-    accessKeyId,
-    secretAccessKey,
-    region,
-    ssl,
-    endpoint,
-  };
+  const input =
+    provider === "ftp"
+      ? {
+          provider: "ftp" as const,
+          displayName,
+          host,
+          port: Number(port) || 21,
+          user: ftpUser,
+          password,
+          startDir,
+        }
+      : {
+          provider: "s3" as const,
+          displayName,
+          accessKeyId,
+          secretAccessKey,
+          region,
+          ssl,
+          endpoint,
+        };
 
   async function test() {
     setBusy(true);
@@ -173,6 +191,9 @@ export function AddStore() {
       setDisplayName("");
       setAccessKeyId("");
       setSecretAccessKey("");
+      setHost("");
+      setPassword("");
+      setStartDir("");
       setMessage("Source saved.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not save the store.");
@@ -211,7 +232,9 @@ export function AddStore() {
               <SourceName>
                 {account.displayName}
                 <SourceMeta>
-                  {account.region ?? account.provider} · secret {account.hasSecret ? "saved" : "missing"}
+                  {account.host ? `${account.host}${account.user ? ` · ${account.user}` : ""}` : account.region ?? account.provider}
+                  {" · "}
+                  {account.provider === "ftp" ? "password" : "secret"} {account.hasSecret ? "saved" : "none"}
                 </SourceMeta>
               </SourceName>
               <IconButton
@@ -235,6 +258,43 @@ export function AddStore() {
             </ProviderButton>
           ))}
         </ProviderList>
+        {provider === "ftp" ? (
+          <Stack>
+            <FieldRoot>
+              <FieldLabel>Display name</FieldLabel>
+              <TextInput value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+            </FieldRoot>
+            <FieldRoot>
+              <FieldLabel>Host</FieldLabel>
+              <TextInput placeholder="ftp.example.com" value={host} autoComplete="off" onChange={(event) => setHost(event.target.value)} />
+            </FieldRoot>
+            <FieldRoot>
+              <FieldLabel>Port</FieldLabel>
+              <TextInput value={port} onChange={(event) => setPort(event.target.value)} />
+            </FieldRoot>
+            <FieldRoot>
+              <FieldLabel>User</FieldLabel>
+              <TextInput value={ftpUser} autoComplete="off" onChange={(event) => setFtpUser(event.target.value)} />
+            </FieldRoot>
+            <FieldRoot>
+              <FieldLabel>Password</FieldLabel>
+              <TextInput type="password" value={password} autoComplete="new-password" onChange={(event) => setPassword(event.target.value)} />
+            </FieldRoot>
+            <FieldRoot>
+              <FieldLabel>Starting directory</FieldLabel>
+              <TextInput placeholder="/" value={startDir} onChange={(event) => setStartDir(event.target.value)} />
+            </FieldRoot>
+            {message ? <Muted>{message}</Muted> : null}
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="normal" disabled={busy} onClick={() => void test()}>
+                Test connection
+              </Button>
+              <Button variant="action" disabled={busy} onClick={() => void save()}>
+                Save source
+              </Button>
+            </div>
+          </Stack>
+        ) : null}
         {provider === "s3" ? (
           <Stack>
             <FieldRoot>

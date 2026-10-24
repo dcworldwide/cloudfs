@@ -1,6 +1,7 @@
 import styled from "@emotion/styled";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ListedEntry, PaneLocator, TransferInput } from "../../../electron/preload";
+import { capabilities, joinKey, parentPrefix } from "../../core/paths";
 import type { PaneState, PublicAccount, WorkspaceTab } from "../../core/store";
 import { api } from "../api";
 import { useConfig, useQueue, useWorkspace } from "../state";
@@ -128,11 +129,7 @@ export function transferTouches(
   locator: PaneLocator,
   job: { source: { storeId: string; container: string; key: string }; dest: { storeId: string; container: string; key: string } },
 ): boolean {
-  const parent = (key: string) => {
-    if (locator.provider === "local") return key.slice(0, key.lastIndexOf("/")) || "/";
-    const slash = key.lastIndexOf("/");
-    return slash < 0 ? "" : key.slice(0, slash + 1);
-  };
+  const parent = (key: string) => parentPrefix(locator.provider, key);
   const same = (side: { storeId: string; container: string; key: string }) =>
     side.storeId === locator.storeId && side.container === locator.container && parent(side.key) === locator.prefix;
   return same(job.source) || same(job.dest);
@@ -140,8 +137,7 @@ export function transferTouches(
 
 /** A folder row in the same listing is a destination. Dropping on the pane itself is not. */
 export function folderDest(pane: PaneState, folder: ClipItem): PaneState {
-  const prefix = pane.provider === "local" ? folder.key : folder.key.endsWith("/") ? folder.key : `${folder.key}/`;
-  return { ...pane, prefix };
+  return { ...pane, prefix: folder.key };
 }
 
 /** One place that turns a source item into a copy or move job. */
@@ -151,12 +147,12 @@ export function transferItems(
   items: ClipItem[],
   move: boolean,
 ): TransferInput[] {
-  if (dest.provider !== "local" && !dest.container) return [];
+  if (capabilities(dest.provider).containers && !dest.container) return [];
   return items
     .filter((item) => !(source.storeId === dest.storeId && source.prefix === dest.prefix && source.container === dest.container))
     .filter((item) => item.key !== dest.prefix && `${item.key}/` !== dest.prefix)
     .map((item) => {
-      const destKey = dest.provider === "local" ? `${dest.prefix.replace(/\/$/, "")}/${item.name}` : `${dest.prefix}${item.name}`;
+      const destKey = joinKey(dest.provider, dest.prefix, item.name);
       const kind = move
         ? "move"
         : source.provider === "local" && dest.provider !== "local"
@@ -494,7 +490,7 @@ function FilePane({
 
   function open(entry: ListedEntry) {
     if (entry.kind !== "folder") return;
-    if (pane.provider !== "local" && !pane.container) {
+    if (capabilities(pane.provider).containers && !pane.container) {
       workspace.updatePane(side, { container: entry.key, prefix: "" });
       return;
     }
@@ -820,6 +816,16 @@ function crumbsFor(pane: PaneState, home: string): Crumb[] {
     for (const part of parts) {
       cursor = `${cursor}/${part}`;
       crumbs.push({ label: part, patch: { prefix: cursor } });
+    }
+    return crumbs;
+  }
+  if (!capabilities(pane.provider).containers) {
+    const parts = pane.prefix.split("/").filter(Boolean);
+    const crumbs: Crumb[] = [{ label: "Root", patch: { prefix: "" } }];
+    let prefix = "";
+    for (const part of parts) {
+      prefix = prefix ? `${prefix}/${part}` : part;
+      crumbs.push({ label: part, patch: { prefix } });
     }
     return crumbs;
   }

@@ -28,6 +28,15 @@ describe("transferItems", () => {
     expect(transferItems(local, local, items, false)).toHaveLength(0);
   });
 
+  it("moves an FTP file into a folder on the same server", () => {
+    const ftp: PaneState = { storeId: "ftp-1", provider: "ftp", container: "", prefix: "" };
+    const dest = folderDest(ftp, { key: "upload", name: "upload" });
+    const [job] = transferItems(ftp, dest, [{ key: "1KB.zip", name: "1KB.zip" }], true);
+    expect(job.kind).toBe("move");
+    expect(job.dest.key).toBe("upload/1KB.zip");
+    expect(job.dest.container).toBe("");
+  });
+
   it("moves a cloud object into a folder in the same bucket", () => {
     const dest = folderDest(cloud, { key: "production/", name: "production" });
     const [job] = transferItems(cloud, dest, [{ key: "_test.txt", name: "_test.txt" }], true);

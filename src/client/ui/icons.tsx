@@ -111,6 +111,16 @@ export function GcsIcon() {
   );
 }
 
+/** Folder with an uplink arrow, used as the FTP source mark. */
+export function FtpIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#3DDC97" d="M4 8.5h6l1.5 2H20a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 20 20.5H4A1.5 1.5 0 0 1 2.5 19v-9A1.5 1.5 0 0 1 4 8.5Z" />
+      <path fill="#0B1F17" d="M12 6.2 8.8 9.6h2.1v3.2h2.2V9.6h2.1L12 6.2Z" />
+    </svg>
+  );
+}
+
 export function CloudIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">

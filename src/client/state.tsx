@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AppState, ListedEntry, PaneLocator, TransferInput } from "../../electron/preload";
 import type { PaneState, PaneView, PublicAccount, TransferJob, WorkspaceTab } from "../core/store";
+import type { ProviderId } from "../core/store";
 import { locationKey, paneView } from "../core/store";
 import { api } from "./api";
 
@@ -41,11 +42,12 @@ const ConfigContext = createContext<ConfigValue | null>(null);
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 const QueueContext = createContext<QueueValue | null>(null);
 
-function freshTab(home: string, storeId: string): WorkspaceTab {
+function freshTab(home: string, storeId: string, provider: ProviderId = "local"): WorkspaceTab {
+  const rightLocal = provider === "local";
   return {
     id: `tab-${Date.now()}`,
     left: { storeId: "local", provider: "local", container: "", prefix: home, view: emptyView() },
-    right: { storeId, provider: storeId === "local" ? "local" : "s3", container: "", prefix: storeId === "local" ? home : "", view: emptyView() },
+    right: { storeId, provider: rightLocal ? "local" : provider, container: "", prefix: rightLocal ? home : "", view: emptyView() },
   };
 }
 
@@ -207,8 +209,8 @@ export function AppStateProvider({ initial, children }: { initial: AppState; chi
       active,
       setActive: setActiveId,
       addTab: () => {
-        const last = state.accounts.at(-1)?.id ?? "local";
-        const tab = freshTab(state.home, last);
+        const last = state.accounts.at(-1);
+        const tab = freshTab(state.home, last?.id ?? "local", last?.provider ?? "local");
         setTabs((current) => [...current, tab]);
         setActiveId(tab.id);
       },

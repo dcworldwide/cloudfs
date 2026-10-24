@@ -1,12 +1,12 @@
 import type { Readable } from "node:stream";
 
-export type ProviderId = "s3" | "azure" | "gcs" | "local";
+export type ProviderId = "s3" | "azure" | "gcs" | "ftp" | "local";
 
 export interface Account {
   id: string;
   provider: Exclude<ProviderId, "local">;
   displayName: string;
-  settings: Record<string, string | boolean>;
+  settings: Record<string, string | boolean | number>;
 }
 
 export interface S3Settings {
@@ -15,6 +15,17 @@ export interface S3Settings {
   region: string;
   ssl: boolean;
   endpoint?: string;
+}
+
+/** Plain FTP. `secure` is stored for a later FTPS switch and stays false in this pass. */
+export interface FtpSettings {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  secure: boolean;
+  /** Directory listed when the pane opens. Empty means the login directory. */
+  startDir: string;
 }
 
 export interface Entry {
@@ -64,6 +75,8 @@ export interface CopyRequest {
   from: Locator;
   to: Locator;
   size?: number;
+  /** When true, the adapter may rename instead of copying. FTP uses this. */
+  move?: boolean;
   signal?: AbortSignal;
   onProgress?: (bytesDone: number, bytesTotal?: number) => void;
 }
@@ -115,7 +128,19 @@ export function dedupeKey(kind: JobKind, source: Locator, dest: Locator): string
   return [kind, locatorKey(source), locatorKey(dest)].join("::");
 }
 
-export function isS3Settings(value: Record<string, string | boolean>): value is S3Settings & Record<string, string | boolean> {
+export function isFtpSettings(value: Record<string, string | boolean | number>): value is FtpSettings & Record<string, string | boolean | number> {
+  return (
+    typeof value.host === "string" &&
+    value.host.length > 0 &&
+    typeof value.port === "number" &&
+    typeof value.user === "string" &&
+    typeof value.password === "string" &&
+    typeof value.secure === "boolean" &&
+    typeof value.startDir === "string"
+  );
+}
+
+export function isS3Settings(value: Record<string, string | boolean | number>): value is S3Settings & Record<string, string | boolean | number> {
   return (
     typeof value.accessKeyId === "string" &&
     typeof value.secretAccessKey === "string" &&
@@ -219,11 +244,14 @@ export interface PublicAccount {
   region?: string;
   ssl?: boolean;
   endpoint?: string;
+  host?: string;
+  user?: string;
   hasSecret: boolean;
 }
 
 export function toPublicAccount(account: Account): PublicAccount {
   const settings = account.settings;
+  const secret = settings.secretAccessKey ?? settings.password;
   return {
     id: account.id,
     provider: account.provider,
@@ -231,6 +259,8 @@ export function toPublicAccount(account: Account): PublicAccount {
     region: typeof settings.region === "string" ? settings.region : undefined,
     ssl: typeof settings.ssl === "boolean" ? settings.ssl : undefined,
     endpoint: typeof settings.endpoint === "string" && settings.endpoint ? settings.endpoint : undefined,
-    hasSecret: typeof settings.secretAccessKey === "string" && settings.secretAccessKey.length > 0,
+    host: typeof settings.host === "string" ? settings.host : undefined,
+    user: typeof settings.user === "string" ? settings.user : undefined,
+    hasSecret: typeof secret === "string" && secret.length > 0,
   };
 }

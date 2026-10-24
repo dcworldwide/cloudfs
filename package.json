@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.716.0",
+    "basic-ftp": "^6.2.3",
     "electron-updater": "^6.6.2"
   },
   "devDependencies": {

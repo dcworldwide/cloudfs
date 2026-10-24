@@ -55,3 +55,7 @@ Add these as GitHub Actions secrets. Do not commit the files.
 ## Sharing
 
 Share the repo. Someone else clones it, runs `npm install` and `npm start`, and gets their own config file. Installed copies come from the GitHub Release assets once a signed tag has been published.
+
+## Notes to self
+
+- Add FTP as a source. The app should allow for FTP as a source adaptor with a generic API for all sources.

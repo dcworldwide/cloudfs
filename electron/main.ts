@@ -3,6 +3,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { FtpAdapter } from "../src/adapters/ftp";
 import { LocalAdapter } from "../src/adapters/local";
 import { S3Adapter } from "../src/adapters/s3";
 import { UnavailableAdapter } from "../src/adapters/stub";
@@ -10,9 +11,11 @@ import { configPathFor, loadConfig, saveConfig, saveJson } from "../src/core/con
 import { AdapterRegistry } from "../src/core/registry";
 import { TransferCoordinator } from "../src/core/transfers";
 import { createUpdateController, UpdateController } from "../src/core/updater";
+import { folderKey, parentPrefix, renamedKey } from "../src/core/paths";
 import {
   Account,
   AppConfig,
+  isFtpSettings,
   isS3Settings,
   PaneState,
   toPublicAccount,
@@ -62,14 +65,39 @@ async function persist(): Promise<void> {
 
 function accountFromInput(input: {
   id?: string;
+  provider?: Account["provider"];
   displayName: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  region: string;
-  ssl: boolean;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  region?: string;
+  ssl?: boolean;
   endpoint?: string;
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  startDir?: string;
 }): Account {
   const existing = input.id ? config.accounts.find((item) => item.id === input.id) : undefined;
+  const provider = input.provider ?? existing?.provider ?? "s3";
+  if (provider === "ftp") {
+    const password =
+      input.password ||
+      (existing && typeof existing.settings.password === "string" ? existing.settings.password : "");
+    return {
+      id: input.id ?? randomUUID(),
+      provider,
+      displayName: input.displayName.trim(),
+      settings: {
+        host: (input.host ?? "").trim(),
+        port: input.port && input.port > 0 ? input.port : 21,
+        user: (input.user ?? "anonymous").trim(),
+        password,
+        secure: false,
+        startDir: (input.startDir ?? "").trim(),
+      },
+    };
+  }
   const secret =
     input.secretAccessKey ||
     (existing && typeof existing.settings.secretAccessKey === "string" ? existing.settings.secretAccessKey : "");
@@ -78,10 +106,10 @@ function accountFromInput(input: {
     provider: "s3",
     displayName: input.displayName.trim(),
     settings: {
-      accessKeyId: input.accessKeyId.trim(),
+      accessKeyId: (input.accessKeyId ?? "").trim(),
       secretAccessKey: secret,
-      region: input.region.trim(),
-      ssl: input.ssl,
+      region: (input.region ?? "").trim(),
+      ssl: input.ssl ?? true,
       endpoint: (input.endpoint ?? "").trim(),
     },
   };
@@ -93,14 +121,17 @@ function registerIpc(): void {
 
   ipcMain.handle("account:test", async (_event, input) => {
     const account = accountFromInput(input);
-    if (!isS3Settings(account.settings)) throw new Error("S3 settings are incomplete.");
-    await registry.get("s3").test(account);
+    if (account.provider === "ftp" && !isFtpSettings(account.settings)) throw new Error("FTP settings are incomplete.");
+    if (account.provider === "s3" && !isS3Settings(account.settings)) throw new Error("S3 settings are incomplete.");
+    await registry.get(account.provider).test(account);
   });
 
   ipcMain.handle("account:save", async (_event, input) => {
     const account = accountFromInput(input);
     if (!account.displayName) throw new Error("Display name is required.");
-    if (!isS3Settings(account.settings) || !account.settings.secretAccessKey) {
+    if (account.provider === "ftp") {
+      if (!isFtpSettings(account.settings)) throw new Error("Host is required.");
+    } else if (!isS3Settings(account.settings) || !account.settings.secretAccessKey) {
       throw new Error("Access key, secret, and region are required.");
     }
     const index = config.accounts.findIndex((item) => item.id === account.id);
@@ -226,8 +257,7 @@ function registerIpc(): void {
       return;
     }
     const account = coordinator.account(locator.storeId);
-    const key = locator.prefix ? `${locator.prefix.replace(/\/$/, "")}/${safe}/` : `${safe}/`;
-    await registry.get(locator.provider).mkdir(account, locator.container, key);
+    await registry.get(locator.provider).mkdir(account, locator.container, folderKey(locator.provider, locator.prefix, safe));
   });
 
   ipcMain.handle("fs:rename", async (_event, locator: PaneState, from: string, to: string) => {
@@ -238,8 +268,8 @@ function registerIpc(): void {
       return;
     }
     const account = coordinator.account(locator.storeId);
-    const parent = from.includes("/") ? from.slice(0, from.lastIndexOf("/") + 1) : "";
-    const dest = `${parent}${name}`;
+    const parent = parentPrefix(locator.provider, from);
+    const dest = renamedKey(locator.provider, from, name);
     const adapter = registry.get(locator.provider);
     const existing = await adapter.list(account, locator.container, parent);
     if (existing.some((entry) => entry.name === name && entry.key !== from)) {
@@ -357,6 +387,7 @@ app.whenReady().then(async () => {
   config = await loadConfig(userDir());
   registry = new AdapterRegistry();
   registry.register(new S3Adapter());
+  registry.register(new FtpAdapter());
   registry.register(new UnavailableAdapter("azure", "Microsoft Azure"));
   registry.register(new UnavailableAdapter("gcs", "Google Cloud Storage"));
   local = new LocalAdapter(app.getPath("home"));

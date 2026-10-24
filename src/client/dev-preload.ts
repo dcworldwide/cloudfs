@@ -62,6 +62,7 @@ const api: CloudfsApi = {
   getState: async () => ({ ...state, accounts: [...state.accounts] }),
   providers: async () => [
     { id: "s3", label: "Amazon S3", available: true },
+    { id: "ftp", label: "FTP", available: true },
     { id: "azure", label: "Microsoft Azure", available: false },
     { id: "gcs", label: "Google Cloud Storage", available: false },
   ],

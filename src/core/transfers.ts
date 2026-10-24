@@ -7,6 +7,7 @@ import { LocalAdapter } from "../adapters/local";
 import { loadJson, saveJson, transfersPathFor } from "./config";
 import { AdapterRegistry } from "./registry";
 import { TransferQueue } from "./queue";
+import { capabilities } from "./paths";
 import { Account, Locator, TransferJob } from "./store";
 
 export interface TransferState {
@@ -78,14 +79,16 @@ export class TransferCoordinator {
     if (
       (job.kind === "copy" || job.kind === "move") &&
       job.source.provider === job.dest.provider &&
-      job.source.provider === "s3" &&
-      job.source.storeId === job.dest.storeId
+      job.source.provider !== "local" &&
+      job.source.storeId === job.dest.storeId &&
+      capabilities(job.source.provider).serverCopy
     ) {
-      const adapter = this.opts.registry.get("s3");
+      const adapter = this.opts.registry.get(job.source.provider);
       await adapter.copy(this.account(job.source.storeId), {
         from: job.source,
         to: job.dest,
         size: job.bytesTotal,
+        move: job.kind === "move",
         signal,
         onProgress: (bytesDone, bytesTotal) => this.queue.update(job.id, { bytesDone, bytesTotal }),
       });
