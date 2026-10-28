@@ -8,7 +8,9 @@ import {
   createStaticUpdateController,
   createUpdateController,
   packagedUpdateSkipReason,
+  updateCheckIntervalMs,
   updateDeferredMessage,
+  updateFocusCheckGapMs,
   updateStatusText,
 } from "./updater";
 
@@ -98,6 +100,11 @@ describe("update controller", () => {
     expect(updateStatusText({ status: "ready", version: "0.1.4" })).toBe(
       "Update 0.1.4 is ready. It installs the next time Cloudfs restarts.",
     );
+  });
+
+  it("rechecks often enough to notice a release published while the app is open", () => {
+    expect(updateCheckIntervalMs).toBe(4 * 60 * 60 * 1000);
+    expect(updateFocusCheckGapMs).toBeLessThan(updateCheckIntervalMs);
   });
 
   it("skips unpackaged builds and unsigned macOS builds", () => {

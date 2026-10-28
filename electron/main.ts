@@ -29,6 +29,8 @@ import {
   createStaticUpdateController,
   createUpdateController,
   packagedUpdateSkipReason,
+  updateCheckIntervalMs,
+  updateFocusCheckGapMs,
   UpdateController,
 } from "../src/core/updater"
 
@@ -406,7 +408,17 @@ function wireUpdates(): void {
       )
       send("update:change", snapshot)
     })
-    void updates.check()
+    let lastCheck = 0
+    const checkForRelease = () => {
+      const status = updates?.snapshot().status
+      if (status === "checking" || status === "available" || status === "downloading" || status === "ready") return
+      if (Date.now() - lastCheck < updateFocusCheckGapMs) return
+      lastCheck = Date.now()
+      void updates?.check()
+    }
+    checkForRelease()
+    setInterval(checkForRelease, updateCheckIntervalMs)
+    app.on("browser-window-focus", checkForRelease)
   } catch (error) {
     log.error(error)
     updates = createStaticUpdateController("Updates could not be started. See the updater log for details.")

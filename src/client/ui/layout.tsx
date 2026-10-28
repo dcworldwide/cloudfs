@@ -13,9 +13,9 @@ export const AppShell = styled.div`
 export const TopBar = styled.header`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  min-height: 64px;
-  padding: ${({ theme }) => theme.space.md}px ${({ theme }) => theme.space.xl}px;
+  gap: ${({ theme }) => theme.space.md}px;
+  min-height: 44px;
+  padding: 6px ${({ theme }) => theme.space.md}px 0;
   background: transparent;
 `;
 
@@ -29,8 +29,8 @@ export const Brand = styled.div`
 export const Wordmark = styled.span`
   font-family: Outfit, ${({ theme }) => theme.font};
   font-weight: 600;
-  font-size: 26px;
-  letter-spacing: -0.045em;
+  font-size: 18px;
+  letter-spacing: -0.04em;
   line-height: 1;
 `;
 
@@ -66,7 +66,7 @@ export const Pane = styled.section`
   min-height: 0;
   display: flex;
   flex-direction: column;
-  margin: ${({ theme }) => theme.space.sm}px;
+  margin: 6px ${({ theme }) => theme.space.sm}px ${({ theme }) => theme.space.sm}px;
   border-radius: 18px;
   background: ${({ theme }) => (theme.mode === "light" ? "rgba(255,255,255,0.42)" : "rgba(16,20,34,0.38)")};
   border: 1px solid ${({ theme }) => (theme.mode === "light" ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.1)")};
@@ -80,6 +80,8 @@ export const Row = styled.div`
   display: flex;
   gap: ${({ theme }) => theme.space.sm}px;
   align-items: center;
+  margin-left: auto;
+  flex: none;
 `;
 
 export const Stack = styled.div`

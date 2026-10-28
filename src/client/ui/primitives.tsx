@@ -69,6 +69,30 @@ export const IconButton = styled(Button)`
   line-height: 1;
 `;
 
+export const IconToggle = styled(Toggle)`
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: ${({ theme }) => theme.radius}px;
+  border: 1px solid ${({ theme }) => theme.color.border};
+  background: transparent;
+  color: ${({ theme }) => theme.color.text};
+  cursor: pointer;
+  &[data-pressed] {
+    background: ${({ theme }) => theme.color.primary};
+    border-color: ${({ theme }) => theme.color.primary};
+    color: ${({ theme }) => theme.color.primaryText};
+  }
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.color.primary};
+    outline-offset: 2px;
+  }
+`;
+
 export const CrumbButton = styled(Button)`
   min-height: 28px;
   padding: 0 2px;

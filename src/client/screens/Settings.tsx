@@ -2,9 +2,8 @@ import styled from "@emotion/styled";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { isHexColor } from "../../core/theme";
-import { updateDeferredMessage, updateStatusText } from "../../core/updater";
-import { useEffect } from "react";
 import { api } from "../api";
+import { UpdateControl } from "./UpdateControl";
 import { useConfig } from "../state";
 import { useThemeColor } from "../theme-context";
 import { Muted, PathText, Stack } from "../ui/layout";
@@ -41,10 +40,6 @@ export function Settings() {
   const [concurrency, setConcurrency] = useState(String(state.concurrency));
   const [confirmImport, setConfirmImport] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [update, setUpdate] = useState(state.update);
-  const [updateNote, setUpdateNote] = useState<string | null>(null);
-
-  useEffect(() => api().onUpdate(setUpdate), []);
 
   function editColor(next: string) {
     setColor(next);
@@ -123,26 +118,7 @@ export function Settings() {
       </FieldRoot>
       <Stack>
         <Heading>Updates</Heading>
-        <Muted>{updateStatusText(update)}</Muted>
-        {updateNote ? <Muted>{updateNote}</Muted> : null}
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {update.status === "idle" && update.message ? null : (
-            <Button variant="normal" onClick={() => void api().checkForUpdates()}>
-              Check for updates
-            </Button>
-          )}
-          {update.status === "ready" ? (
-            <Button
-              variant="action"
-              onClick={async () => {
-                const result = await api().restartToUpdate();
-                setUpdateNote(result === "deferred" ? updateDeferredMessage : null);
-              }}
-            >
-              Restart to update
-            </Button>
-          ) : null}
-        </div>
+        <UpdateControl variant="settings" />
       </Stack>
       {message ? <Muted>{message}</Muted> : null}
     </Page>

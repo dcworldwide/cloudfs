@@ -43,17 +43,29 @@ const Sheet = styled.section<{ leaving?: boolean }>`
   }
 `;
 
-const Summary = styled.button`
-  width: 100%;
+const Summary = styled.div`
   min-height: 44px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 0 ${({ theme }) => theme.space.md}px;
-  border: 0;
-  background: transparent;
   color: ${({ theme }) => theme.color.text};
   font: 500 13px ${({ theme }) => theme.font};
+`;
+
+const SummaryButton = styled.button`
+  min-height: 44px;
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   cursor: pointer;
 `;
 
@@ -99,15 +111,37 @@ export function transferRoute(job: Pick<TransferJob, "kind" | "source" | "dest">
   return `${providerName(job.source.provider)} → ${providerName(job.dest.provider)}`;
 }
 
-export function QueueDrawer() {
+export function QueueDrawer({
+  pinned,
+  onClose,
+  dismissed,
+}: {
+  pinned: boolean;
+  onClose: () => void;
+  dismissed: number;
+}) {
   const queue = useQueue();
   const pending = queue.jobs.filter((job) => job.status === "running" || job.status === "queued" || job.status === "paused");
   const done = queue.jobs.filter((job) => job.status === "done" || job.status === "error" || job.status === "cancelled");
-  const [present, setPresent] = useState(pending.length > 0);
+  const [present, setPresent] = useState(pending.length > 0 || pinned);
   const [leaving, setLeaving] = useState(false);
   const [open, setOpen] = useState(true);
+  const [seenDismiss, setSeenDismiss] = useState(dismissed);
 
   useEffect(() => {
+    if (dismissed === seenDismiss) return;
+    setSeenDismiss(dismissed);
+    setLeaving(true);
+  }, [dismissed, seenDismiss]);
+
+  useEffect(() => {
+    if (pinned) {
+      setLeaving(false);
+      setPresent(true);
+      setOpen(true);
+      return;
+    }
+    if (dismissed !== seenDismiss || leaving) return;
     if (pending.length > 0) {
       setLeaving(false);
       setPresent(true);
@@ -117,7 +151,7 @@ export function QueueDrawer() {
     if (!present || queue.jobs.length === 0) return;
     const timer = setTimeout(() => setLeaving(true), 3000);
     return () => clearTimeout(timer);
-  }, [pending.length, present, queue.jobs.length]);
+  }, [dismissed, leaving, pending.length, pinned, present, queue.jobs.length, seenDismiss]);
 
   useEffect(() => {
     if (!leaving) return;
@@ -142,25 +176,33 @@ export function QueueDrawer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!present || queue.jobs.length === 0) return null;
+  if (!present) return null;
   const bytes = queue.jobs.reduce((sum, job) => sum + job.bytesDone, 0);
 
   return (
     <Sheet data-queue="" tabIndex={-1} leaving={leaving}>
-      <Summary onClick={() => setOpen((value) => !value)}>
-        <span>
-          {[
-            pending.length ? `${pending.length} in queue` : null,
-            done.length ? `${done.length} finished` : null,
-            `${Math.round(bytes / 1024)} KB moved`,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </span>
-        <span>{open ? "Hide" : "Show"}</span>
+      <Summary>
+        <SummaryButton onClick={() => setOpen((value) => !value)}>
+          <span>
+            {[
+              pending.length ? `${pending.length} in queue` : null,
+              done.length ? `${done.length} finished` : null,
+              queue.jobs.length ? `${Math.round(bytes / 1024)} KB moved` : "No transfers yet",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+          <span>{open ? "Hide" : "Show"}</span>
+        </SummaryButton>
+        {pinned ? (
+          <Button variant="normal" onClick={onClose}>
+            Close
+          </Button>
+        ) : null}
       </Summary>
       {open ? (
         <List>
+          {queue.jobs.length === 0 ? <Job><span style={{ opacity: 0.7 }}>Transfers will stay listed here.</span></Job> : null}
           {queue.jobs.map((job) => {
             const live = job.status === "running" || job.status === "queued";
             const finished = job.status === "done" || job.status === "error" || job.status === "cancelled";

@@ -35,6 +35,12 @@ const silentLog: UpdateLogger = {
 
 export const updateDeferredMessage = "Transfers are still running. The update will install when they finish.";
 
+/** Recheck while the app stays open. A launch-only check misses a release published later that day. */
+export const updateCheckIntervalMs = 4 * 60 * 60 * 1000;
+
+/** Don't hit GitHub again just because the window was focused twice in a row. */
+export const updateFocusCheckGapMs = 15 * 60 * 1000;
+
 export function packagedUpdateSkipReason(input: { packaged: boolean; platform: string; macSigned: boolean }): string | null {
   if (!input.packaged) return "Update checks run only in an installed build.";
   if (input.platform === "darwin" && !input.macSigned) {

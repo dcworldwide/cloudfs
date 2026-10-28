@@ -19,6 +19,21 @@ export function GearIcon() {
   );
 }
 
+export function TransfersIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M4 8h12M13 4l4 4-4 4M20 16H8M11 12l-4 4 4 4"
+      />
+    </svg>
+  );
+}
+
 export function FolderIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">

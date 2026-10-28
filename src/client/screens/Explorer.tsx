@@ -42,12 +42,14 @@ const Crumbs = styled.nav`
   gap: 2px;
   align-items: center;
   min-height: 40px;
-  padding: 0 ${({ theme }) => theme.space.md}px;
+  padding: 8px ${({ theme }) => theme.space.md}px 10px;
   overflow: auto;
   white-space: nowrap;
 `;
 
 const Filter = styled(TextInput)`
+  width: auto;
+  min-width: 0;
   margin: 0 ${({ theme }) => theme.space.md}px ${({ theme }) => theme.space.sm}px;
   min-height: 36px;
 `;
@@ -73,6 +75,14 @@ const Actions = styled.div`
   display: flex;
   gap: 4px;
   align-items: center;
+  flex: none;
+`;
+
+const PaneAction = styled(IconButton)`
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 8px;
 `;
 
 const DropHint = styled.div`
@@ -89,9 +99,10 @@ const DropHint = styled.div`
 
 const Bar = styled.div`
   display: flex;
-  align-items: end;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
   gap: 4px;
-  padding: ${({ theme }) => theme.space.sm}px ${({ theme }) => theme.space.md}px 0;
   overflow: auto;
 `;
 
@@ -175,8 +186,58 @@ function tabTitle(tab: WorkspaceTab, accounts: PublicAccount[]): string {
 
 const TAB_SLIDE_MS = 220;
 
-export function Explorer() {
+export function TabBar() {
   const { accounts } = useConfig();
+  const workspace = useWorkspace();
+  return (
+    <Bar>
+      <Tabs.Root
+        value={workspace.active.id}
+        onValueChange={(value) => {
+          const next = String(value);
+          if (next === workspace.active.id) return;
+          workspace.setActive(next);
+        }}
+      >
+        <TabList>
+          {workspace.tabs.map((tab) => (
+            <Tab key={tab.id} value={tab.id}>
+              <span>{tabTitle(tab, accounts)}</span>
+              {workspace.tabs.length > 1 ? (
+                <IconButton
+                  title="Close tab"
+                  aria-label={`Close ${tabTitle(tab, accounts)}`}
+                  variant="normal"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    workspace.closeTab(tab.id);
+                  }}
+                  style={{ width: 22, height: 22, minHeight: 22, marginLeft: 8, borderColor: "transparent" }}
+                >
+                  ×
+                </IconButton>
+              ) : null}
+            </Tab>
+          ))}
+          <TabIndicator />
+        </TabList>
+      </Tabs.Root>
+      <IconButton title="New tab" aria-label="New tab" onClick={workspace.addTab}>
+        +
+      </IconButton>
+    </Bar>
+  );
+}
+
+export function Explorer({
+  queuePinned,
+  queueDismissed,
+  onCloseQueue,
+}: {
+  queuePinned: boolean;
+  queueDismissed: number;
+  onCloseQueue: () => void;
+}) {
   const workspace = useWorkspace();
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const reveal = useRef(workspace.setDisplayed);
@@ -192,47 +253,11 @@ export function Explorer() {
 
   return (
     <Body>
-      <Bar>
-        <Tabs.Root
-          value={workspace.active.id}
-          onValueChange={(value) => {
-            const next = String(value);
-            if (next === workspace.active.id) return;
-            workspace.setActive(next);
-          }}
-        >
-          <TabList>
-            {workspace.tabs.map((tab) => (
-              <Tab key={tab.id} value={tab.id}>
-                <span>{tabTitle(tab, accounts)}</span>
-                {workspace.tabs.length > 1 ? (
-                  <IconButton
-                    title="Close tab"
-                    aria-label={`Close ${tabTitle(tab, accounts)}`}
-                    variant="normal"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      workspace.closeTab(tab.id);
-                    }}
-                    style={{ width: 22, height: 22, minHeight: 22, marginLeft: 8, borderColor: "transparent" }}
-                  >
-                    ×
-                  </IconButton>
-                ) : null}
-              </Tab>
-            ))}
-            <TabIndicator />
-          </TabList>
-        </Tabs.Root>
-        <IconButton title="New tab" aria-label="New tab" onClick={workspace.addTab}>
-          +
-        </IconButton>
-      </Bar>
       <Panes>
         <FilePane side="left" clipboard={clipboard} setClipboard={setClipboard} />
         <FilePane side="right" clipboard={clipboard} setClipboard={setClipboard} />
       </Panes>
-      <QueueDrawer />
+      <QueueDrawer pinned={queuePinned} dismissed={queueDismissed} onClose={onCloseQueue} />
     </Body>
   );
 }
@@ -407,6 +432,16 @@ function FilePane({
         pasteClipboard();
         return;
       }
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "a") {
+        const target = event.target as HTMLElement | null;
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+        const hovered = document.querySelector(`[data-pane="${side}"]:hover`);
+        if (!hovered || visible.length === 0) return;
+        event.preventDefault();
+        setAnchor(visible[0].key);
+        workspace.setSelection(paneId, visible.map((item) => item.key));
+        return;
+      }
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
@@ -574,26 +609,10 @@ function FilePane({
               />
             </form>
           ) : null}
-          <IconButton title="New folder" aria-label="New folder" onClick={() => setCreating(true)}>
+          <PaneAction title="New folder" aria-label="New folder" onClick={() => setCreating(true)}>
             <PlusIcon />
-          </IconButton>
-          <IconButton
-            title={`Copy to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
-            aria-label={`Copy to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
-            disabled={selected.length === 0}
-            onClick={() => sendToOther(selected, "copy")}
-          >
-            <CopyIcon />
-          </IconButton>
-          <IconButton
-            title={`Move to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
-            aria-label={`Move to ${sourceName(workspace.displayed[side === "left" ? "right" : "left"], accounts)}`}
-            disabled={selected.length === 0}
-            onClick={() => sendToOther(selected, "move")}
-          >
-            <MoveIcon />
-          </IconButton>
-          <IconButton
+          </PaneAction>
+          <PaneAction
             title="Delete"
             aria-label="Delete"
             variant="danger"
@@ -601,7 +620,7 @@ function FilePane({
             onClick={() => deleteKeys(selected)}
           >
             <TrashIcon />
-          </IconButton>
+          </PaneAction>
         </Actions>
       </Crumbs>
       <Filter
