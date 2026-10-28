@@ -4,7 +4,7 @@ A local desktop file explorer for files on this computer, Amazon S3, and FTP. It
 
 ## Run it
 
-Requires Node.js 20 or newer.
+Requires Node.js 24.22.1 (current LTS) or newer.
 
 ```
 npm install
