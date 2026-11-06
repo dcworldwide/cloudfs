@@ -14,8 +14,8 @@ export const TopBar = styled.header`
   display: flex;
   align-items: center;
   gap: ${({ theme }) => theme.space.md}px;
-  min-height: 44px;
-  padding: 6px ${({ theme }) => theme.space.md}px 0;
+  min-height: 48px;
+  padding: 8px ${({ theme }) => theme.space.md}px 4px;
   background: transparent;
 `;
 
@@ -27,18 +27,16 @@ export const Brand = styled.div`
 `;
 
 export const Wordmark = styled.span`
-  font-family: Outfit, ${({ theme }) => theme.font};
-  font-weight: 600;
-  font-size: 18px;
-  letter-spacing: -0.04em;
+  font-weight: 590;
+  font-size: 13px;
+  letter-spacing: -0.01em;
   line-height: 1;
 `;
 
 export const Version = styled.span`
-  font-family: ${({ theme }) => theme.mono};
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  font-weight: 450;
+  letter-spacing: 0;
   color: ${({ theme }) => theme.color.muted};
   font-variant-numeric: tabular-nums;
 `;
@@ -54,7 +52,13 @@ export const Panes = styled.div`
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  margin: 8px;
+  border: 1px solid ${({ theme }) => theme.color.border};
+  border-radius: 10px;
+  background: ${({ theme }) => theme.color.border};
+  overflow: hidden;
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;
@@ -66,13 +70,7 @@ export const Pane = styled.section`
   min-height: 0;
   display: flex;
   flex-direction: column;
-  margin: 6px ${({ theme }) => theme.space.sm}px ${({ theme }) => theme.space.sm}px;
-  border-radius: 18px;
-  background: ${({ theme }) => (theme.mode === "light" ? "rgba(255,255,255,0.42)" : "rgba(16,20,34,0.38)")};
-  border: 1px solid ${({ theme }) => (theme.mode === "light" ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.1)")};
-  box-shadow: ${({ theme }) =>
-    theme.mode === "light" ? "0 10px 30px rgba(40, 50, 80, 0.06)" : "0 12px 32px rgba(0, 0, 0, 0.22)"};
-  backdrop-filter: blur(22px) saturate(1.4);
+  background: ${({ theme }) => theme.color.surface};
   overflow: hidden;
 `;
 

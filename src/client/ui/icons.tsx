@@ -31,7 +31,7 @@ export function GearIcon() {
 
 export function TransfersIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" style={{ transform: "rotate(90deg)" }}>
       <path
         fill="none"
         stroke="currentColor"

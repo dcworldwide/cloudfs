@@ -105,9 +105,9 @@ export function buildTheme(primary = DEFAULT_PRIMARY, mode: ColorMode = "dark"):
       ...palette,
     },
     space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },
-    radius: 8,
-    font: '"IBM Plex Sans", "Segoe UI", sans-serif',
-    mono: '"IBM Plex Mono", ui-monospace, monospace',
+    radius: 6,
+    font: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    mono: 'ui-monospace, "SF Mono", "Segoe UI Mono", monospace',
     backdrop: appBackdrop(color, isColorMode(mode) ? mode : "dark"),
   };
 }

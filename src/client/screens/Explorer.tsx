@@ -42,8 +42,8 @@ const Crumbs = styled.nav`
   display: flex;
   gap: 2px;
   align-items: center;
-  min-height: 40px;
-  padding: 8px ${({ theme }) => theme.space.md}px 10px;
+  min-height: 44px;
+  padding: 8px ${({ theme }) => theme.space.md}px;
   overflow: auto;
   white-space: nowrap;
 `;
@@ -52,7 +52,12 @@ const Filter = styled(TextInput)`
   width: auto;
   min-width: 0;
   margin: 0 ${({ theme }) => theme.space.md}px ${({ theme }) => theme.space.sm}px;
-  min-height: 36px;
+  min-height: 32px;
+  border-color: transparent;
+  background: ${({ theme }) => theme.color.bg};
+  &:focus-visible {
+    border-color: ${({ theme }) => theme.color.border};
+  }
 `;
 
 const Table = styled.div`
@@ -60,9 +65,26 @@ const Table = styled.div`
   flex-direction: column;
 `;
 
+const Header = styled.div`
+  min-height: 28px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 132px;
+  gap: 8px;
+  align-items: center;
+  padding: 0 ${({ theme }) => theme.space.md}px;
+  border-bottom: 1px solid ${({ theme }) => theme.color.border};
+  color: ${({ theme }) => theme.color.muted};
+  font: 600 11px ${({ theme }) => theme.font};
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  @media (max-width: 900px) {
+    grid-template-columns: minmax(0, 1fr) 72px;
+  }
+`;
+
 const Meta = styled.span`
-  color: inherit;
-  opacity: 0.75;
+  color: ${({ theme }) => theme.color.muted};
+  opacity: 1;
   font-variant-numeric: tabular-nums;
   @media (max-width: 900px) {
     &:last-of-type {
@@ -83,7 +105,11 @@ const PaneAction = styled(IconButton)`
   width: 28px;
   height: 28px;
   min-height: 28px;
-  border-radius: 8px;
+  border-radius: 6px;
+  box-shadow: none;
+  &:hover:not(:disabled) {
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  }
 `;
 
 const DropHint = styled.div`
@@ -92,7 +118,7 @@ const DropHint = styled.div`
   gap: 6px;
   min-height: 28px;
   padding: 0 8px;
-  border-radius: 99px;
+  border-radius: 6px;
   background: ${({ theme }) => theme.color.primary};
   color: ${({ theme }) => theme.color.primaryText};
   font: 500 12px ${({ theme }) => theme.font};
@@ -672,6 +698,11 @@ function FilePane({
       <ScrollArea.Root style={{ flex: 1, minHeight: 0 }}>
         <ScrollViewport ref={scrollRef} data-scroll="" tabIndex={0}>
           <Table>
+            <Header>
+              <span>Name</span>
+              <span>Size</span>
+              <span>Modified</span>
+            </Header>
             {denied ? (
               <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
                 <Muted>macOS has not allowed Cloudfs to read this folder.</Muted>

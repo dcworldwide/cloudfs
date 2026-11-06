@@ -33,6 +33,7 @@ export const Button = styled(BaseButton)<{ variant?: ButtonVariant }>`
   text-decoration: none;
   padding: 0 ${({ theme }) => theme.space.md}px;
   border-radius: ${({ theme }) => theme.radius}px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
   border: 1px solid ${({ theme, variant }) => variantBorder(variant, theme.color)};
   background: ${({ theme, variant }) => variantBackground(variant, theme.color)};
   color: ${({ theme, variant }) =>
@@ -45,6 +46,7 @@ export const Button = styled(BaseButton)<{ variant?: ButtonVariant }>`
       variant === "action" || variant === "danger" ? variantBackground(variant, theme.color) : theme.color.surfaceRaised};
     filter: ${({ variant }) => (variant === "action" || variant === "danger" ? "brightness(1.08)" : "none")};
     border-color: ${({ theme, variant }) => (variant ? variantBorder(variant, theme.color) : theme.color.primary)};
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
   }
   &:active:not(:disabled) {
     transform: translateY(1px);
@@ -99,6 +101,7 @@ export const CrumbButton = styled(Button)`
   min-height: 28px;
   padding: 0 2px;
   border-color: transparent;
+  box-shadow: none;
   color: ${({ theme }) => theme.color.muted};
   font: 500 13px ${({ theme }) => theme.font};
   cursor: pointer;
@@ -113,11 +116,12 @@ export const CrumbButton = styled(Button)`
 `;
 
 export const MenuTrigger = styled(Menu.Trigger)`
-  min-height: 32px;
+  min-height: 28px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: ${({ theme }) => theme.radius}px;
   border: 1px solid ${({ theme }) => theme.color.border};
-  background: ${({ theme }) => theme.color.bg};
+  background: transparent;
+  box-shadow: none;
   color: ${({ theme }) => theme.color.text};
   font: 600 13px ${({ theme }) => theme.font};
   cursor: pointer;
@@ -210,7 +214,7 @@ export const DialogPopup = styled(Dialog.Popup, {
   overflow: auto;
   width: min(520px, calc(100vw - 32px));
   padding: ${({ theme }) => theme.space.xl}px;
-  border-radius: 16px;
+  border-radius: 12px;
   background: ${({ theme }) => theme.color.surface};
   border: 1px solid ${({ theme }) => theme.color.border};
   color: ${({ theme }) => theme.color.text};
@@ -265,19 +269,24 @@ export const RowButton = styled(BaseButton, {
   min-height: 40px;
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr 90px 140px;
+  grid-template-columns: minmax(0, 1fr) 72px 132px;
   gap: 8px;
   align-items: center;
   text-align: left;
   border: 0;
-  border-bottom: 1px solid ${({ theme }) => theme.color.border};
+  border-bottom: 1px solid ${({ theme }) => theme.color.border}66;
   padding: 0 ${({ theme }) => theme.space.md}px;
   background: ${({ theme, selected, dropTarget }) =>
-    dropTarget ? theme.color.surface : selected ? theme.color.primary : "transparent"};
-  box-shadow: ${({ theme, dropTarget }) => (dropTarget ? `inset 0 0 0 2px ${theme.color.primary}` : "none")};
-  color: ${({ theme, selected }) => (selected ? theme.color.primaryText : theme.color.text)};
+    dropTarget ? theme.color.surface : selected ? theme.color.surfaceRaised : "transparent"};
+  box-shadow: ${({ theme, selected, dropTarget }) =>
+    dropTarget ? `inset 0 0 0 1px ${theme.color.primary}` : selected ? `inset 2px 0 0 ${theme.color.primary}` : "none"};
+  color: ${({ theme }) => theme.color.text};
   font: 400 13px ${({ theme }) => theme.font};
   cursor: pointer;
+  &:hover {
+    background: ${({ theme, selected, dropTarget }) =>
+      dropTarget || selected ? theme.color.surfaceRaised : theme.color.bg};
+  }
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.color.primary};
     outline-offset: -2px;
@@ -351,8 +360,9 @@ export const TabIndicator = styled(Tabs.Indicator)`
   top: var(--active-tab-top);
   width: var(--active-tab-width);
   height: var(--active-tab-height);
-  border-radius: 999px;
-  background: ${({ theme }) => theme.color.primary};
+  border-radius: ${({ theme }) => theme.radius}px;
+  background: ${({ theme }) => theme.color.surfaceRaised};
+  box-shadow: inset 0 0 0 1px ${({ theme }) => theme.color.border};
   transition: left 220ms cubic-bezier(0.22, 1, 0.36, 1), width 220ms cubic-bezier(0.22, 1, 0.36, 1);
 `;
 
@@ -364,7 +374,7 @@ export const Tab = styled(Tabs.Tab)`
   align-items: center;
   padding: 0 12px;
   border: 0;
-  border-radius: 999px;
+  border-radius: ${({ theme }) => theme.radius}px;
   background: transparent;
   color: ${({ theme }) => theme.color.muted};
   font: 500 13px ${({ theme }) => theme.font};
@@ -372,7 +382,7 @@ export const Tab = styled(Tabs.Tab)`
   cursor: pointer;
   transition: color 180ms ease;
   &[data-active] {
-    color: ${({ theme }) => theme.color.primaryText};
+    color: ${({ theme }) => theme.color.text};
   }
   &:focus-visible {
     outline: 2px solid ${({ theme }) => theme.color.primary};

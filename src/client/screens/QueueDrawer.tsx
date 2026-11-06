@@ -192,13 +192,10 @@ export function QueueDrawer({
               .filter(Boolean)
               .join(" · ")}
           </span>
-          <span>{open ? "Hide" : "Show"}</span>
         </SummaryButton>
-        {pinned ? (
-          <Button variant="normal" onClick={onClose}>
-            Close
-          </Button>
-        ) : null}
+        <Button variant="normal" onClick={onClose}>
+          Close
+        </Button>
       </Summary>
       {open ? (
         <List>
