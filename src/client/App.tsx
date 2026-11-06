@@ -47,6 +47,24 @@ function Shell({ state }: { state: AppState }) {
           }
           * {
             box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: ${theme.color.border} transparent;
+          }
+          *::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+          }
+          *::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          *::-webkit-scrollbar-thumb {
+            background: ${theme.color.border};
+            border: 2px solid transparent;
+            border-radius: 99px;
+            background-clip: padding-box;
+          }
+          *::-webkit-scrollbar-corner {
+            background: transparent;
           }
         `}
       />
