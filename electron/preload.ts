@@ -63,6 +63,7 @@ export interface AccountInput {
   displayName: string;
   accessKeyId?: string;
   secretAccessKey?: string;
+  sessionToken?: string;
   region?: string;
   ssl?: boolean;
   endpoint?: string;

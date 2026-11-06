@@ -79,6 +79,7 @@ function accountFromInput(input: {
   displayName: string
   accessKeyId?: string
   secretAccessKey?: string
+  sessionToken?: string
   region?: string
   ssl?: boolean
   endpoint?: string
@@ -111,6 +112,10 @@ function accountFromInput(input: {
   const secret =
     input.secretAccessKey ||
     (existing && typeof existing.settings.secretAccessKey === "string" ? existing.settings.secretAccessKey : "")
+  const sessionToken = (input.sessionToken ?? "").trim()
+  const storedToken =
+    sessionToken ||
+    (existing && typeof existing.settings.sessionToken === "string" ? existing.settings.sessionToken : "")
   return {
     id: input.id ?? randomUUID(),
     provider: "s3",
@@ -118,6 +123,7 @@ function accountFromInput(input: {
     settings: {
       accessKeyId: (input.accessKeyId ?? "").trim(),
       secretAccessKey: secret,
+      ...(storedToken ? { sessionToken: storedToken } : {}),
       region: (input.region ?? "").trim(),
       ssl: input.ssl ?? true,
       endpoint: (input.endpoint ?? "").trim(),

@@ -124,6 +124,7 @@ export function AddStore() {
   const [displayName, setDisplayName] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [sessionToken, setSessionToken] = useState("");
   const [region, setRegion] = useState("us-east-1");
   const [ssl, setSsl] = useState(true);
   const [endpoint, setEndpoint] = useState("");
@@ -163,6 +164,7 @@ export function AddStore() {
           displayName,
           accessKeyId,
           secretAccessKey,
+          sessionToken,
           region,
           ssl,
           endpoint,
@@ -191,6 +193,7 @@ export function AddStore() {
       setDisplayName("");
       setAccessKeyId("");
       setSecretAccessKey("");
+      setSessionToken("");
       setHost("");
       setPassword("");
       setStartDir("");
@@ -308,6 +311,16 @@ export function AddStore() {
             <FieldRoot>
               <FieldLabel>Secret</FieldLabel>
               <TextInput type="password" value={secretAccessKey} autoComplete="new-password" onChange={(event) => setSecretAccessKey(event.target.value)} />
+            </FieldRoot>
+            <FieldRoot>
+              <FieldLabel>Session token (optional)</FieldLabel>
+              <TextInput
+                type="password"
+                value={sessionToken}
+                autoComplete="new-password"
+                placeholder="STS session token"
+                onChange={(event) => setSessionToken(event.target.value)}
+              />
             </FieldRoot>
             <FieldRoot>
               <FieldLabel>Region</FieldLabel>

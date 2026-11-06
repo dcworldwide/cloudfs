@@ -12,6 +12,8 @@ export interface Account {
 export interface S3Settings {
   accessKeyId: string;
   secretAccessKey: string;
+  /** Temporary credentials from STS. Omit for a long-lived access key. */
+  sessionToken?: string;
   region: string;
   ssl: boolean;
   endpoint?: string;
@@ -158,6 +160,7 @@ export function isS3Settings(value: Record<string, string | boolean | number>): 
   return (
     typeof value.accessKeyId === "string" &&
     typeof value.secretAccessKey === "string" &&
+    (value.sessionToken === undefined || typeof value.sessionToken === "string") &&
     typeof value.region === "string" &&
     typeof value.ssl === "boolean"
   );

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MULTIPART_THRESHOLD, PART_SIZE, S3_COPY_MAX_SINGLE, type Account } from "../core/store";
 import { MemoryS3, s3Error } from "../testing/memory-s3";
 import { bufferStream, readAll } from "../testing/streams";
-import { S3Adapter } from "./s3";
+import { createS3Client, S3Adapter } from "./s3";
 
 function account(): Account {
   return {
@@ -36,6 +36,20 @@ function client(sent: { name: string; input: Record<string, unknown> }[]) {
     },
   };
 }
+
+describe("createS3Client", () => {
+  it("omits the session token for a long-lived key and sends it for temporary credentials", async () => {
+    const permanent = await createS3Client(account()).config.credentials();
+    expect(permanent).toMatchObject({ accessKeyId: "key", secretAccessKey: "secret" });
+    expect(permanent.sessionToken).toBeUndefined();
+
+    const temporary = await createS3Client({
+      ...account(),
+      settings: { ...account().settings, sessionToken: "session" },
+    }).config.credentials();
+    expect(temporary.sessionToken).toBe("session");
+  });
+});
 
 describe("S3Adapter", () => {
   it("lists buckets and prefixes", async () => {

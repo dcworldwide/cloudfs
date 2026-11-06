@@ -58,6 +58,7 @@ export function createS3Client(account: Account): S3Client {
     credentials: {
       accessKeyId: settings.accessKeyId,
       secretAccessKey: settings.secretAccessKey,
+      ...(settings.sessionToken ? { sessionToken: settings.sessionToken } : {}),
     },
   });
 }
