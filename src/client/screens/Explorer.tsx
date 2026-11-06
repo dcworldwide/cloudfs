@@ -25,6 +25,7 @@ import {
   Tabs,
   TextInput,
   Toast,
+  Hint,
 } from "../ui/primitives";
 import { notify } from "../ui/toast";
 import { QueueDrawer } from "./QueueDrawer";
@@ -457,18 +458,22 @@ function FilePane({
         return;
       }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        const hovered = document.querySelector(`[data-pane="${side}"]:hover`);
+        const list = document.querySelector(`[data-pane="${side}"] [data-scroll]`);
+        const active = list instanceof HTMLElement && (list.matches(":hover") || document.activeElement === list);
         const keys = visible.map((item) => item.key);
-        if (!hovered || keys.length === 0) return;
+        if (!active || keys.length === 0) return;
         event.preventDefault();
-        const current = keys.indexOf(anchor ?? selected.at(-1) ?? "");
-        const nextIndex = event.key === "ArrowDown" ? Math.min(keys.length - 1, Math.max(0, current) + (current < 0 ? 0 : 1)) : Math.max(0, current - 1);
+        const focus = selected.at(-1);
+        const cursor = focus && keys.includes(focus) ? focus : anchor && keys.includes(anchor) ? anchor : keys[0];
+        const current = keys.indexOf(cursor);
+        const nextIndex = event.key === "ArrowDown" ? Math.min(keys.length - 1, current + 1) : Math.max(0, current - 1);
         const next = keys[nextIndex];
-        if (!anchor) setAnchor(next);
-        if (event.shiftKey && anchor) {
-          const start = keys.indexOf(anchor);
+        const startKey = anchor && keys.includes(anchor) ? anchor : cursor;
+        if (!anchor || !keys.includes(anchor)) setAnchor(startKey);
+        if (event.shiftKey) {
+          const start = keys.indexOf(startKey);
           const [from, to] = start < nextIndex ? [start, nextIndex] : [nextIndex, start];
-          workspace.setSelection(paneId, keys.slice(from, to + 1));
+          workspace.setSelection(paneId, [...keys.slice(from, to), next]);
         } else {
           setAnchor(next);
           workspace.setSelection(paneId, [next]);
@@ -535,8 +540,34 @@ function FilePane({
   }
 
 
+  function commitRename(entry: ListedEntry) {
+    const next = renameValue.trim();
+    setRenaming(null);
+    if (!next || next === entry.name) return;
+    const taken = entries.some(
+      (item) => item.key !== entry.key && item.name.localeCompare(next, undefined, { sensitivity: "accent" }) === 0,
+    );
+    if (taken) {
+      notify(toasts, "error", `"${next}" already exists.`);
+      return;
+    }
+    void api()
+      .rename(locator, entry.key, next)
+      .then(reload)
+      .catch((reason: unknown) => {
+        notify(toasts, "error", reason instanceof Error ? reason.message : "Could not rename.");
+      });
+  }
+
   function open(entry: ListedEntry) {
-    if (entry.kind !== "folder") return;
+    if (entry.kind !== "folder") {
+      if (pane.provider === "local") {
+        void api().openPath(entry.key).catch((reason: unknown) => {
+          notify(toasts, "error", reason instanceof Error ? reason.message : "Could not open the file.");
+        });
+      }
+      return;
+    }
     if (capabilities(pane.provider).containers && !pane.container) {
       workspace.updatePane(side, { container: entry.key, prefix: "" });
       return;
@@ -639,7 +670,7 @@ function FilePane({
       <ContextMenu.Trigger
         render={
       <ScrollArea.Root style={{ flex: 1, minHeight: 0 }}>
-        <ScrollViewport ref={scrollRef} data-scroll="">
+        <ScrollViewport ref={scrollRef} data-scroll="" tabIndex={0}>
           <Table>
             {denied ? (
               <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -665,33 +696,25 @@ function FilePane({
                   <Filter
                     autoFocus
                     value={renameValue}
+                    ref={(node) => {
+                      if (!node || node.dataset.armed === "true") return;
+                      node.dataset.armed = "true";
+                      window.setTimeout(() => {
+                        node.focus();
+                        if (node instanceof HTMLInputElement) node.select();
+                      }, 0);
+                    }}
                     onChange={(event) => setRenameValue(event.target.value)}
+                    onBlur={() => setRenaming(null)}
                     onKeyDown={(event) => {
                       event.stopPropagation();
-                      if (event.key === "Escape") setRenaming(null);
+                      if (event.key === "Escape") {
+                        event.currentTarget.blur();
+                        return;
+                      }
                       if (event.key !== "Enter") return;
                       event.preventDefault();
-                      const next = renameValue.trim();
-                      if (!next || next === entry.name) {
-                        setRenaming(null);
-                        return;
-                      }
-                      const taken = entries.some(
-                        (item) => item.key !== entry.key && item.name.localeCompare(next, undefined, { sensitivity: "accent" }) === 0,
-                      );
-                      if (taken) {
-                        notify(toasts, "error", `"${next}" already exists.`);
-                        return;
-                      }
-                      void api()
-                        .rename(locator, entry.key, next)
-                        .then(() => {
-                          setRenaming(null);
-                          reload();
-                        })
-                        .catch((reason: unknown) => {
-                          notify(toasts, "error", reason instanceof Error ? reason.message : "Could not rename.");
-                        });
+                      commitRename(entry);
                     }}
                     style={{ margin: 0, minHeight: 28 }}
                   />
@@ -732,6 +755,7 @@ function FilePane({
                   event.dataTransfer.effectAllowed = "copyMove";
                 }}
                 onClick={(event) => {
+                  event.currentTarget.closest("[data-pane]")?.querySelector<HTMLElement>("[data-scroll]")?.focus();
                   if (event.shiftKey && anchor) {
                     const keys = visible.map((item) => item.key);
                     const start = keys.indexOf(anchor);
@@ -819,6 +843,24 @@ function FilePane({
   );
 }
 
+function connectionSummary(pane: PaneState, accounts: PublicAccount[], home: string): string {
+  if (pane.provider === "local") return `This Computer\nFolder: ${pane.prefix || home}`;
+  const account = accounts.find((item) => item.id === pane.storeId);
+  if (!account) return "Store";
+  const lines = [account.displayName, account.provider === "ftp" ? "FTP" : "Amazon S3"];
+  if (account.provider === "ftp") {
+    lines.push(`Host: ${account.host ?? ""}`, `Port: ${account.port ?? 21}`, `User: ${account.user ?? ""}`);
+    if (account.startDir) lines.push(`Starting directory: ${account.startDir}`);
+    lines.push(`Password: ${account.hasSecret ? "saved" : "none"}`);
+  } else {
+    if (account.accessKeyId) lines.push(`Access key: ${account.accessKeyId}`);
+    lines.push(`Region: ${account.region ?? ""}`, `SSL: ${account.ssl === false ? "off" : "on"}`);
+    if (account.endpoint) lines.push(`Endpoint: ${account.endpoint}`);
+    lines.push(`Secret: ${account.hasSecret ? "saved" : "none"}`, `Session token: ${account.hasSessionToken ? "saved" : "none"}`);
+  }
+  return lines.join("\n");
+}
+
 function SourceMenu({
   pane,
   accounts,
@@ -832,7 +874,9 @@ function SourceMenu({
 }) {
   return (
     <Menu.Root>
-      <MenuTrigger>{sourceName(pane, accounts)}</MenuTrigger>
+      <Hint label={connectionSummary(pane, accounts, home)} labelText="Connection details" render={<MenuTrigger />}>
+        {sourceName(pane, accounts)}
+      </Hint>
       <Menu.Portal>
         <Menu.Positioner sideOffset={6}>
           <MenuPopup>

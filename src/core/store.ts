@@ -260,12 +260,16 @@ export interface PublicAccount {
   id: string;
   provider: Account["provider"];
   displayName: string;
+  accessKeyId?: string;
   region?: string;
   ssl?: boolean;
   endpoint?: string;
   host?: string;
+  port?: number;
   user?: string;
+  startDir?: string;
   hasSecret: boolean;
+  hasSessionToken: boolean;
 }
 
 export function toPublicAccount(account: Account): PublicAccount {
@@ -275,11 +279,15 @@ export function toPublicAccount(account: Account): PublicAccount {
     id: account.id,
     provider: account.provider,
     displayName: account.displayName,
+    accessKeyId: typeof settings.accessKeyId === "string" ? settings.accessKeyId : undefined,
     region: typeof settings.region === "string" ? settings.region : undefined,
     ssl: typeof settings.ssl === "boolean" ? settings.ssl : undefined,
     endpoint: typeof settings.endpoint === "string" && settings.endpoint ? settings.endpoint : undefined,
     host: typeof settings.host === "string" ? settings.host : undefined,
+    port: typeof settings.port === "number" ? settings.port : undefined,
     user: typeof settings.user === "string" ? settings.user : undefined,
+    startDir: typeof settings.startDir === "string" ? settings.startDir : undefined,
     hasSecret: typeof secret === "string" && secret.length > 0,
+    hasSessionToken: typeof settings.sessionToken === "string" && settings.sessionToken.length > 0,
   };
 }

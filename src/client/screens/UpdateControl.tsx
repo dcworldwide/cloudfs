@@ -102,15 +102,11 @@ export function UpdateControl({ variant }: { variant: UpdateControlVariant }) {
       const percent = update.percent == null ? "" : ` ${Math.round(update.percent)}%`;
       return <StatusChip title={updateStatusText(update)}>Downloading {update.version ?? "update"}{percent}</StatusChip>;
     }
-    if (update.status !== "ready" && update.status !== "error") return null;
+    if (update.status === "ready") return null;
+    if (update.status !== "error") return null;
     if (!label) return null;
     return (
-      <Button
-        variant={update.status === "ready" ? "action" : "normal"}
-        disabled={busy}
-        title={note ?? updateStatusText(update)}
-        onClick={() => void run()}
-      >
+      <Button variant="normal" disabled={busy} title={note ?? updateStatusText(update)} onClick={() => void run()}>
         {label}
       </Button>
     );

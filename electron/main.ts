@@ -94,7 +94,7 @@ function accountFromInput(input: {
   if (provider === "ftp") {
     const password =
       input.password ||
-      (existing && typeof existing.settings.password === "string" ? existing.settings.password : "")
+      (input.id && existing && typeof existing.settings.password === "string" ? existing.settings.password : "")
     return {
       id: input.id ?? randomUUID(),
       provider,
@@ -111,11 +111,11 @@ function accountFromInput(input: {
   }
   const secret =
     input.secretAccessKey ||
-    (existing && typeof existing.settings.secretAccessKey === "string" ? existing.settings.secretAccessKey : "")
+    (input.id && existing && typeof existing.settings.secretAccessKey === "string" ? existing.settings.secretAccessKey : "")
   const sessionToken = (input.sessionToken ?? "").trim()
   const storedToken =
     sessionToken ||
-    (existing && typeof existing.settings.sessionToken === "string" ? existing.settings.sessionToken : "")
+    (input.id && existing && typeof existing.settings.sessionToken === "string" ? existing.settings.sessionToken : "")
   return {
     id: input.id ?? randomUUID(),
     provider: "s3",
@@ -241,6 +241,12 @@ function registerIpc(): void {
     if (current.timer) clearTimeout(current.timer)
     current.watcher.close()
     directoryWatches.delete(dir)
+  })
+
+  ipcMain.handle("fs:open", async (_event, file: string) => {
+    if (!file || typeof file !== "string") throw new Error("Choose a file to open.")
+    const error = await shell.openPath(file)
+    if (error) throw new Error(error)
   })
 
   ipcMain.handle("fs:grant", async (_event, dir: string) => {

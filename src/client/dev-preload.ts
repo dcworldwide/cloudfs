@@ -18,9 +18,10 @@ const state: AppState = {
       id: "acc-photos",
       provider: "s3",
       displayName: "Photos",
-      region: "us-east-1",
+      region: "ap-southeast-2",
       ssl: true,
       hasSecret: true,
+      hasSessionToken: false,
     },
   ],
   bookmarks: [],
@@ -88,6 +89,7 @@ const api: CloudfsApi = {
       ssl: input.ssl,
       endpoint: input.endpoint,
       hasSecret: true,
+      hasSessionToken: Boolean(input.sessionToken),
     };
     state.accounts.push(account);
     return account;
@@ -109,6 +111,7 @@ const api: CloudfsApi = {
   exportConfig: async () => state.configPath,
   importConfig: async () => undefined,
   grant: async () => null,
+  openPath: async () => undefined,
   watch: async () => undefined,
   unwatch: async () => undefined,
   list: async (locator: PaneLocator) => {

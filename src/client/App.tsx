@@ -11,7 +11,7 @@ import { GearIcon, TransfersIcon } from "./ui/icons";
 import { AppStateProvider } from "./state";
 import { AppThemeProvider } from "./theme-context";
 import { AppShell, Brand, Row, TopBar, Version, Wordmark } from "./ui/layout";
-import { Button, IconButton, IconToggle, Toast } from "./ui/primitives";
+import { Button, IconButton, IconToggle, Toast, Tooltip } from "./ui/primitives";
 import { Toaster } from "./ui/toast";
 
 
@@ -50,6 +50,7 @@ function Shell({ state }: { state: AppState }) {
           }
         `}
       />
+      <Tooltip.Provider delay={300}>
       <Toast.Provider timeout={4000}>
       <HashRouter>
         <AppShell>
@@ -90,6 +91,7 @@ function Shell({ state }: { state: AppState }) {
         </AppShell>
       </HashRouter>
       </Toast.Provider>
+      </Tooltip.Provider>
     </AppStateProvider>
   );
 }

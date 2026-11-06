@@ -1,4 +1,5 @@
 import styled from "@emotion/styled";
+import type { ReactElement, ReactNode } from "react";
 import { Button as BaseButton } from "@base-ui/react/button";
 import { ContextMenu } from "@base-ui/react/context-menu";
 import { Menu } from "@base-ui/react/menu";
@@ -14,6 +15,7 @@ import { Toast } from "@base-ui/react/toast";
 import { Toggle } from "@base-ui/react/toggle";
 import { ToggleGroup } from "@base-ui/react/toggle-group";
 import { Toolbar } from "@base-ui/react/toolbar";
+import { Tooltip } from "@base-ui/react/tooltip";
 
 export type ButtonVariant = "normal" | "action" | "danger";
 
@@ -181,9 +183,9 @@ export const FieldLabel = styled(Field.Label)`
   text-transform: uppercase;
 `;
 
-export const DialogBackdrop = styled(Dialog.Backdrop)`
+export const DialogBackdrop = styled(Dialog.Backdrop)<{ nested?: boolean }>`
   position: fixed;
-  z-index: 40;
+  z-index: ${({ nested }) => (nested ? 50 : 40)};
   inset: 0;
   background: rgba(8, 12, 22, 0.28);
   backdrop-filter: blur(10px);
@@ -194,9 +196,11 @@ export const DialogBackdrop = styled(Dialog.Backdrop)`
   }
 `;
 
-export const DialogPopup = styled(Dialog.Popup)`
+export const DialogPopup = styled(Dialog.Popup, {
+  shouldForwardProp: (prop) => prop !== "nested",
+})<{ nested?: boolean }>`
   position: fixed;
-  z-index: 40;
+  z-index: ${({ nested }) => (nested ? 50 : 40)};
   top: 50%;
   left: 50%;
   right: auto;
@@ -250,6 +254,9 @@ export const ScrollViewport = styled(ScrollArea.Viewport)`
   width: 100%;
   overflow-anchor: none;
   scrollbar-gutter: stable;
+  &:focus {
+    outline: none;
+  }
 `;
 
 export const RowButton = styled(BaseButton, {
@@ -459,4 +466,80 @@ export const ToastRoot = styled(Toast.Root)<{ tone?: "info" | "warning" | "error
   }
 `;
 
-export { Collapsible, ContextMenu, Dialog, Menu, Progress, ScrollArea, Switch, Tabs, Toast, Toolbar };
+export const TooltipPositioner = styled(Tooltip.Positioner)`
+  z-index: 80;
+`;
+
+export const TooltipPopup = styled(Tooltip.Popup)`
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid ${({ theme }) => theme.color.border};
+  background: ${({ theme }) => theme.color.surface};
+  color: ${({ theme }) => theme.color.text};
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  font: 400 12px/1.5 ${({ theme }) => theme.font};
+  white-space: pre-wrap;
+  &[data-starting-style],
+  &[data-ending-style] {
+    opacity: 0;
+  }
+`;
+
+const HintButton = styled(Tooltip.Trigger)`
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 99px;
+  background: transparent;
+  color: ${({ theme }) => theme.color.muted};
+  cursor: pointer;
+  transition: color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  &:hover:not(:disabled) {
+    color: ${({ theme }) => theme.color.text};
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  }
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  &:focus-visible {
+    outline: 2px solid ${({ theme }) => theme.color.primary};
+    outline-offset: 2px;
+  }
+`;
+
+export function Hint({
+  label,
+  labelText = "More information",
+  children,
+  render,
+}: {
+  label: string;
+  labelText?: string;
+  children: ReactNode;
+  render?: ReactElement;
+}) {
+  return (
+    <Tooltip.Root>
+      {render ? (
+        <Tooltip.Trigger render={render} aria-label={labelText}>
+          {children}
+        </Tooltip.Trigger>
+      ) : (
+        <HintButton aria-label={labelText}>{children}</HintButton>
+      )}
+      <Tooltip.Portal>
+        <TooltipPositioner sideOffset={6}>
+          <TooltipPopup>{label}</TooltipPopup>
+        </TooltipPositioner>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
+
+export { Collapsible, ContextMenu, Dialog, Menu, Progress, ScrollArea, Switch, Tabs, Toast, Toolbar, Tooltip };

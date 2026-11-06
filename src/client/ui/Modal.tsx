@@ -6,19 +6,22 @@ export function Modal({
   onClose,
   title,
   description,
+  nested = false,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   description?: string;
+  /** Stack this dialog above an already open modal. */
+  nested?: boolean;
   children: ReactNode;
 }) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
-        <DialogBackdrop />
-        <DialogPopup>
+        <DialogBackdrop nested={nested} />
+        <DialogPopup nested={nested}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
             <DialogTitle>{title}</DialogTitle>
             <IconButton title="Close" aria-label="Close" onClick={onClose}>

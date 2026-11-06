@@ -15,6 +15,7 @@ export interface CloudfsApi {
   importConfig(): Promise<void>;
   list(locator: PaneLocator): Promise<ListedEntry[]>;
   grant(dir: string): Promise<string | null>;
+  openPath(file: string): Promise<void>;
   watch(dir: string): Promise<void>;
   unwatch(dir: string): Promise<void>;
   mkdir(locator: PaneLocator, name: string): Promise<void>;
@@ -111,6 +112,7 @@ const api: CloudfsApi = {
   importConfig: () => ipcRenderer.invoke("settings:import"),
   list: (locator) => ipcRenderer.invoke("fs:list", locator),
   grant: (dir) => ipcRenderer.invoke("fs:grant", dir),
+  openPath: (file) => ipcRenderer.invoke("fs:open", file),
   watch: (dir) => ipcRenderer.invoke("fs:watch", dir),
   unwatch: (dir) => ipcRenderer.invoke("fs:unwatch", dir),
   mkdir: (locator, name) => ipcRenderer.invoke("fs:mkdir", locator, name),
