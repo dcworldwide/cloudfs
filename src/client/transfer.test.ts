@@ -89,6 +89,24 @@ describe("transferItems", () => {
     expect(transferRoute(same)).toBeNull();
   });
 
+  it("copies and pastes a Windows file onto S3 without node:path or process", () => {
+    const windows: PaneState = { storeId: "local", provider: "local", container: "", prefix: "C:\\Users\\Public" };
+    const zip = { key: "C:\\Users\\Public\\setup.zip", name: "setup.zip" };
+    const dropped = transferItems(windows, cloud, [zip], false);
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]).toMatchObject({
+      kind: "upload",
+      name: "setup.zip",
+      source: { provider: "local", key: "C:\\Users\\Public\\setup.zip" },
+      dest: { provider: "s3", container: "photos", key: "setup.zip" },
+    });
+    const pasted = transferItems(windows, { ...cloud, prefix: "inbox/" }, [zip], false);
+    expect(pasted[0]?.dest.key).toBe("inbox/setup.zip");
+    const back = transferItems(cloud, windows, [{ key: "setup.zip", name: "setup.zip" }], false);
+    expect(back[0]).toMatchObject({ kind: "download", dest: { key: "C:\\Users\\Public\\setup.zip" } });
+    expect(transferTouches(windows, { source: back[0].source, dest: back[0].dest })).toBe(true);
+  });
+
   it("does not move a folder into itself", () => {
     const dest = folderDest(cloud, { key: "production/", name: "production" });
     expect(transferItems(cloud, dest, [{ key: "production/", name: "production" }], true)).toHaveLength(0);

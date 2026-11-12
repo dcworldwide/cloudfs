@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { ProviderId } from "./store";
 
 /** What the UI is allowed to know about a source. Protocol details stay in the adapter. */
@@ -33,15 +32,15 @@ export function normalizePrefix(provider: ProviderId, prefix: string): string {
 }
 
 /** The renderer has no `process`. A drive letter is enough to pick Windows path rules. */
-export function isWindowsPath(value: string, platform?: NodeJS.Platform): boolean {
+export function isWindowsPath(value: string, platform?: string): boolean {
   if (platform === "win32") return true;
   if (platform) return false;
   return /^[A-Za-z]:[\\/]/.test(value) || /^[A-Za-z]:$/.test(value);
 }
 
 /** Parent folder of an object key, in the same shape as a pane prefix. */
-export function parentPrefix(provider: ProviderId, key: string, platform?: NodeJS.Platform): string {
-  if (provider === "local") return localParent(key, platform);
+export function parentPrefix(provider: ProviderId, key: string, platform?: string): string {
+  if (provider === "local") return localDir(key, isWindowsPath(key, platform));
   const trimmed = key.replace(/\/+$/, "");
   const slash = trimmed.lastIndexOf("/");
   if (slash < 0) return "";
@@ -49,22 +48,30 @@ export function parentPrefix(provider: ProviderId, key: string, platform?: NodeJ
   return capabilities(provider).slashFolders ? `${parent}/` : parent;
 }
 
-function localParent(key: string, platform?: NodeJS.Platform): string {
-  const windows = isWindowsPath(key, platform);
-  const api = windows ? path.win32 : path.posix;
-  const parent = api.dirname(key);
-  if (parent === key) return windows ? "" : parent;
+function localSep(windows: boolean): "\\" | "/" {
+  return windows ? "\\" : "/";
+}
+
+function localDir(key: string, windows: boolean): string {
+  const normalized = windows ? key.replace(/\//g, "\\") : key;
+  const trimmed = normalized.replace(/[\\/]+$/, "");
+  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (slash < 0) return windows ? "" : trimmed.startsWith("/") ? "/" : "";
+  const parent = trimmed.slice(0, slash);
+  if (!parent) return windows ? "" : "/";
+  if (windows && /^[A-Za-z]:$/.test(parent)) return `${parent}\\`;
   return parent;
 }
 
+function localJoin(prefix: string, name: string, windows: boolean): string {
+  if (!prefix) return windows ? name : `/${name}`;
+  const base = (windows ? prefix.replace(/\//g, "\\") : prefix).replace(/[\\/]+$/, "");
+  return `${base}${localSep(windows)}${name}`;
+}
+
 /** A child key inside a pane prefix. */
-export function joinKey(provider: ProviderId, prefix: string, name: string, platform?: NodeJS.Platform): string {
-  if (provider === "local") {
-    const windows = isWindowsPath(prefix, platform);
-    const api = windows ? path.win32 : path.posix;
-    if (!prefix) return windows ? name : api.join("/", name);
-    return api.join(prefix, name);
-  }
+export function joinKey(provider: ProviderId, prefix: string, name: string, platform?: string): string {
+  if (provider === "local") return localJoin(prefix, name, isWindowsPath(prefix, platform));
   const base = prefix.replace(/\/+$/, "");
   return base ? `${base}/${name}` : name;
 }
@@ -85,7 +92,7 @@ export interface PathSegment {
  * Every parent the location bar can jump to, including the root.
  * Local Windows starts at the drive list; a drive letter is its own segment.
  */
-export function pathSegments(provider: ProviderId, prefix: string, container = "", platform?: NodeJS.Platform): PathSegment[] {
+export function pathSegments(provider: ProviderId, prefix: string, container = "", platform?: string): PathSegment[] {
   if (provider === "local") return localSegments(prefix, platform);
   if (!capabilities(provider).containers) {
     const parts = prefix.split("/").filter(Boolean);
@@ -107,7 +114,7 @@ export function pathSegments(provider: ProviderId, prefix: string, container = "
   return segments;
 }
 
-function localSegments(prefix: string, platform?: NodeJS.Platform): PathSegment[] {
+function localSegments(prefix: string, platform?: string): PathSegment[] {
   const windows = isWindowsPath(prefix, platform) || platform === "win32";
   if (!windows) {
     const root = prefix.startsWith("/") ? "/" : "";
@@ -135,7 +142,7 @@ function localSegments(prefix: string, platform?: NodeJS.Platform): PathSegment[
 }
 
 /** The text a location field shows, including a trailing separator for a folder. */
-export function pathText(provider: ProviderId, prefix: string, container = "", platform?: NodeJS.Platform): string {
+export function pathText(provider: ProviderId, prefix: string, container = "", platform?: string): string {
   if (provider === "local") {
     if (!prefix) return platform === "win32" ? "" : "/";
     return prefix;
@@ -153,7 +160,7 @@ export interface ParsedPath {
 }
 
 /** Turn an edited location back into the pane prefix the adapter lists. */
-export function parsePathText(provider: ProviderId, text: string, platform?: NodeJS.Platform): ParsedPath {
+export function parsePathText(provider: ProviderId, text: string, platform?: string): ParsedPath {
   const trimmed = text.trim();
   if (provider === "local") {
     if (!trimmed) return { container: "", prefix: platform === "win32" ? "" : "/" };

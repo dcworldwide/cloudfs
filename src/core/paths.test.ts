@@ -12,6 +12,13 @@ describe("path policy", () => {
     expect(parentPrefix("ftp", "/incoming/notes.txt")).toBe("/incoming");
   });
 
+  it("joins a Windows drop with no platform and no node:path", () => {
+    expect(joinKey("local", "C:\\Users\\Public", "setup.zip")).toBe("C:\\Users\\Public\\setup.zip");
+    expect(joinKey("local", "C:/Users/Public", "setup.zip")).toBe("C:\\Users\\Public\\setup.zip");
+    expect(parentPrefix("local", "C:\\Users\\Public\\setup.zip")).toBe("C:\\Users\\Public");
+    expect(parentPrefix("local", "C:\\")).toBe("");
+  });
+
   it("joins local paths without a double slash", () => {
     expect(joinKey("local", "/Users/preview", "notes.txt", "darwin")).toBe("/Users/preview/notes.txt");
     expect(parentPrefix("local", "/Users/preview/notes.txt", "darwin")).toBe("/Users/preview");
