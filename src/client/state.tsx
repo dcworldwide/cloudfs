@@ -42,12 +42,17 @@ const ConfigContext = createContext<ConfigValue | null>(null);
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
 const QueueContext = createContext<QueueValue | null>(null);
 
+function localRoot(home: string): string {
+  return typeof navigator !== "undefined" && /windows/i.test(navigator.userAgent) ? "" : home;
+}
+
 function freshTab(home: string, storeId: string, provider: ProviderId = "local"): WorkspaceTab {
   const rightLocal = provider === "local";
+  const root = localRoot(home);
   return {
     id: `tab-${Date.now()}`,
-    left: { storeId: "local", provider: "local", container: "", prefix: home, view: emptyView() },
-    right: { storeId, provider: rightLocal ? "local" : provider, container: "", prefix: rightLocal ? home : "", view: emptyView() },
+    left: { storeId: "local", provider: "local", container: "", prefix: root, view: emptyView() },
+    right: { storeId, provider: rightLocal ? "local" : provider, container: "", prefix: rightLocal ? root : "", view: emptyView() },
   };
 }
 

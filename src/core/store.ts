@@ -52,6 +52,8 @@ export interface PutOptions {
   size?: number;
   contentType?: string;
   signal?: AbortSignal;
+  /** Tests use a small part so a chunk that overruns a part is still checked. */
+  partSize?: number;
   onProgress?: (bytesDone: number, bytesTotal?: number, resume?: MultipartResume) => void;
   /** Resume an existing multipart upload. */
   resume?: MultipartResume;

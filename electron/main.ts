@@ -5,7 +5,7 @@ import { watch, type FSWatcher } from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { FtpAdapter } from "../src/adapters/ftp"
-import { LocalAdapter } from "../src/adapters/local"
+import { isDriveList, LocalAdapter } from "../src/adapters/local"
 import { S3Adapter } from "../src/adapters/s3"
 import { UnavailableAdapter } from "../src/adapters/stub"
 import { configPathFor, loadConfig, saveConfig, saveJson } from "../src/core/config"
@@ -22,6 +22,17 @@ import {
   TransferJob,
   WorkspaceTab
 } from "../src/core/store"
+
+function openLocalRoot(tabs: WorkspaceTab[], home: string): WorkspaceTab[] {
+  if (process.platform !== "win32") {
+    const fill = (pane: PaneState): PaneState =>
+      pane.provider === "local" && !pane.prefix ? { ...pane, prefix: home } : pane
+    return tabs.map((tab) => ({ ...tab, left: fill(tab.left), right: fill(tab.right) }))
+  }
+  const root = (pane: PaneState): PaneState =>
+    pane.provider === "local" && (!pane.prefix || pane.prefix === home) ? { ...pane, prefix: "" } : pane
+  return tabs.map((tab) => ({ ...tab, left: root(tab.left), right: root(tab.right) }))
+}
 import { isColorMode, isHexColor } from "../src/core/theme"
 import { TransferCoordinator } from "../src/core/transfers"
 import { createUpdateLogger } from "../src/core/update-log"
@@ -62,6 +73,7 @@ function publicState() {
     accounts: config.accounts.map(toPublicAccount),
     bookmarks: config.bookmarks,
     home: app.getPath("home"),
+    platform: process.platform,
     tabs: config.tabs,
     activeTabId: config.activeTabId,
     version: app.getVersion(),
@@ -261,7 +273,7 @@ function registerIpc(): void {
 
   ipcMain.handle("fs:list", async (_event, locator: PaneState) => {
     if (locator.provider === "local") {
-      const prefix = locator.prefix || app.getPath("home")
+      const prefix = locator.prefix || (process.platform === "win32" ? "" : app.getPath("home"))
       return local.list(config.accounts[0] ?? dummy(), "", prefix)
     }
     const account = coordinator.account(locator.storeId)
@@ -274,6 +286,7 @@ function registerIpc(): void {
     const safe = name.replace(/[\\/]/g, "").trim()
     if (!safe) throw new Error("Folder name is required.")
     if (locator.provider === "local") {
+      if (isDriveList(locator.prefix)) throw new Error("Open a drive before creating a folder.")
       const dir = path.join(locator.prefix || app.getPath("home"), safe)
       await local.mkdir(dummy(), "", dir)
       return
@@ -439,6 +452,7 @@ function wireUpdates(): void {
 
 app.whenReady().then(async () => {
   config = await loadConfig(userDir())
+  config.tabs = openLocalRoot(config.tabs, app.getPath("home"))
   registry = new AdapterRegistry()
   registry.register(new S3Adapter())
   registry.register(new FtpAdapter())

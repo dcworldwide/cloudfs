@@ -1,7 +1,7 @@
 import styled from "@emotion/styled";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ListedEntry, PaneLocator, TransferInput } from "../../../electron/preload";
-import { capabilities, joinKey, parentPrefix } from "../../core/paths";
+import { capabilities, joinKey, parentPrefix, parsePathText, pathSegments, pathText, type PathSegment } from "../../core/paths";
 import type { PaneState, PublicAccount, WorkspaceTab } from "../../core/store";
 import { api } from "../api";
 import { useConfig, useQueue, useWorkspace } from "../state";
@@ -9,7 +9,6 @@ import { CloudIcon, ComputerIcon, CopyIcon, FileIcon, FolderIcon, MoveIcon, Plus
 import { Muted, Pane, Panes } from "../ui/layout";
 import {
   Button,
-  CrumbButton,
   ContextMenu,
   IconButton,
   Menu,
@@ -18,11 +17,14 @@ import {
   MenuTrigger,
   RowButton,
   ScrollArea,
+  Scrollbar,
+  ScrollThumb,
   ScrollViewport,
   Tab,
   TabIndicator,
   TabList,
   Tabs,
+  PathField,
   TextInput,
   Toast,
   Hint,
@@ -133,6 +135,14 @@ const Bar = styled.div`
   overflow: auto;
 `;
 
+const Location = styled.div`
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+`;
+
 function formatSize(size?: number): string {
   if (size == null) return "—";
   if (size < 1024) return `${size} B`;
@@ -146,9 +156,15 @@ function formatSize(size?: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
-function sourceName(pane: PaneState, accounts: PublicAccount[]): string {
-  if (pane.provider === "local") return "This Computer";
-  return accounts.find((account) => account.id === pane.storeId)?.displayName ?? "Store";
+function sourceName(pane: PaneState, accounts: PublicAccount[], platform = "darwin"): string {
+  if (pane.provider !== "local") return accounts.find((account) => account.id === pane.storeId)?.displayName ?? "Store";
+  if (platform === "win32") return driveTitle(pane.prefix);
+  return "This Computer";
+}
+
+function driveTitle(prefix: string): string {
+  const match = /^([A-Za-z]:)/.exec(prefix.replace(/\//g, "\\"));
+  return match ? `Local Disk (${match[1]})` : "This PC";
 }
 
 interface ClipItem {
@@ -299,6 +315,7 @@ function FilePane({
   setClipboard: (value: Clipboard | null) => void;
 }) {
   const { state, accounts } = useConfig();
+  const platform = state.platform === "win32" ? "win32" : "darwin";
   const workspace = useWorkspace();
   const tab = workspace.displayed;
   const pane = tab[side];
@@ -559,7 +576,7 @@ function FilePane({
 
   function deleteKeys(keys: string[]) {
     for (const key of keys) {
-      const name = key.split("/").filter(Boolean).at(-1) ?? "item";
+      const name = key.split(/[/\\]/).filter(Boolean).at(-1) ?? "item";
       void api().transfer({ kind: "delete", name, source: { ...pane, key }, dest: { ...pane, key } });
     }
     workspace.setSelection(paneId, []);
@@ -630,13 +647,20 @@ function FilePane({
       }}
     >
       <Crumbs aria-label="Location">
+        <Location>
         <SourceMenu
           pane={pane}
           accounts={accounts}
           home={state.home}
+          platform={platform}
           onSelect={(next) => workspace.updatePane(side, next)}
         />
-        <CrumbsPath pane={pane} home={state.home} onSelect={(patch) => workspace.updatePane(side, patch)} />
+        <LocationField
+          pane={pane}
+          platform={platform}
+          onSelect={(patch) => workspace.updatePane(side, patch)}
+        />
+        </Location>
         {dropMode ? (
           <DropHint>
             {dropMode === "move" ? <MoveIcon /> : <CopyIcon />}
@@ -857,6 +881,9 @@ function FilePane({
             {!error && visible.length === 0 ? <Muted style={{ padding: 12 }}>Nothing here.</Muted> : null}
           </Table>
         </ScrollViewport>
+        <Scrollbar orientation="vertical" aria-label="File list">
+          <ScrollThumb />
+        </Scrollbar>
       </ScrollArea.Root>
         }
       />
@@ -874,8 +901,11 @@ function FilePane({
   );
 }
 
-function connectionSummary(pane: PaneState, accounts: PublicAccount[], home: string): string {
-  if (pane.provider === "local") return `This Computer\nFolder: ${pane.prefix || home}`;
+function connectionSummary(pane: PaneState, accounts: PublicAccount[], home: string, platform = "darwin"): string {
+  if (pane.provider === "local") {
+    const where = pane.prefix || (platform === "win32" ? "All drives" : home);
+    return `${sourceName(pane, accounts, platform)}\nFolder: ${where}`;
+  }
   const account = accounts.find((item) => item.id === pane.storeId);
   if (!account) return "Store";
   const lines = [account.displayName, account.provider === "ftp" ? "FTP" : "Amazon S3"];
@@ -896,24 +926,50 @@ function SourceMenu({
   pane,
   accounts,
   home,
+  platform,
   onSelect,
 }: {
   pane: PaneState;
   accounts: PublicAccount[];
   home: string;
+  platform: string;
   onSelect: (patch: Partial<PaneState>) => void;
 }) {
+  const [drives, setDrives] = useState<ListedEntry[]>([]);
+  useEffect(() => {
+    if (platform !== "win32") return;
+    let live = true;
+    void api()
+      .list({ storeId: "local", provider: "local", container: "", prefix: "" })
+      .then((rows) => {
+        if (live) setDrives(rows);
+      })
+      .catch(() => {
+        if (live) setDrives([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [platform]);
+  const localItems = platform === "win32"
+    ? drives
+    : [{ name: "This Computer", key: home, kind: "folder" as const }];
   return (
     <Menu.Root>
-      <Hint label={connectionSummary(pane, accounts, home)} labelText="Connection details" render={<MenuTrigger />}>
-        {sourceName(pane, accounts)}
+      <Hint label={connectionSummary(pane, accounts, home, platform)} labelText="Connection details" render={<MenuTrigger />}>
+        {sourceName(pane, accounts, platform)}
       </Hint>
       <Menu.Portal>
         <Menu.Positioner sideOffset={6}>
           <MenuPopup>
-            <MenuItem onClick={() => onSelect({ storeId: "local", provider: "local", container: "", prefix: home })}>
-              <ComputerIcon /> This Computer
-            </MenuItem>
+            {localItems.map((item) => (
+              <MenuItem
+                key={item.key}
+                onClick={() => onSelect({ storeId: "local", provider: "local", container: "", prefix: item.key })}
+              >
+                <ComputerIcon /> {item.name}
+              </MenuItem>
+            ))}
             {accounts.map((account) => (
               <MenuItem
                 key={account.id}
@@ -929,68 +985,89 @@ function SourceMenu({
   );
 }
 
-interface Crumb {
-  label: string;
-  patch: Partial<PaneState>;
-}
-
-function crumbsFor(pane: PaneState, home: string): Crumb[] {
-  if (pane.provider === "local") {
-    const path = pane.prefix || home;
-    const relative = path.startsWith(home) ? path.slice(home.length) : path;
-    const parts = relative.split("/").filter(Boolean);
-    const crumbs: Crumb[] = [{ label: "Home", patch: { prefix: home } }];
-    let cursor = home.replace(/\/$/, "");
-    for (const part of parts) {
-      cursor = `${cursor}/${part}`;
-      crumbs.push({ label: part, patch: { prefix: cursor } });
-    }
-    return crumbs;
-  }
-  if (!capabilities(pane.provider).containers) {
-    const parts = pane.prefix.split("/").filter(Boolean);
-    const crumbs: Crumb[] = [{ label: "Root", patch: { prefix: "" } }];
-    let prefix = "";
-    for (const part of parts) {
-      prefix = prefix ? `${prefix}/${part}` : part;
-      crumbs.push({ label: part, patch: { prefix } });
-    }
-    return crumbs;
-  }
-  const crumbs: Crumb[] = [{ label: "Buckets", patch: { container: "", prefix: "" } }];
-  if (pane.container) crumbs.push({ label: pane.container, patch: { container: pane.container, prefix: "" } });
-  const parts = pane.prefix.split("/").filter(Boolean);
-  let prefix = "";
-  for (const part of parts) {
-    prefix = `${prefix}${part}/`;
-    crumbs.push({ label: part, patch: { container: pane.container, prefix } });
-  }
-  return crumbs;
-}
-
-function CrumbsPath({
+function LocationField({
   pane,
-  home,
+  platform,
   onSelect,
 }: {
   pane: PaneState;
-  home: string;
+  platform: string;
   onSelect: (patch: Partial<PaneState>) => void;
 }) {
-  const crumbs = crumbsFor(pane, home);
+  const host = platform === "win32" ? "win32" : "linux";
+  const shown = pathText(pane.provider, pane.prefix, pane.container, host);
+  const [draft, setDraft] = useState(shown);
+  const [editing, setEditing] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!editing) setDraft(shown);
+  }, [shown, editing]);
+
+  function commit(text: string) {
+    setEditing(false);
+    const parsed = parsePathText(pane.provider, text, host);
+    onSelect({ container: parsed.container, prefix: parsed.prefix });
+  }
+
+  function jump(segment: PathSegment) {
+    onSelect({
+      container: segment.container ?? pane.container,
+      prefix: segment.prefix,
+    });
+  }
+
+  const segments = pathSegments(pane.provider, pane.prefix, pane.container, host);
   return (
-    <>
-      {crumbs.map((crumb, index) => (
-        <span key={`${crumb.label}-${index}`} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-          <span aria-hidden="true">/</span>
-          <CrumbButton
-            aria-current={index === crumbs.length - 1 ? "page" : undefined}
-            onClick={() => onSelect(crumb.patch)}
-          >
-            {crumb.label}
-          </CrumbButton>
-        </span>
-      ))}
-    </>
+    <PathField
+      ref={field}
+      aria-label="Location"
+      spellCheck={false}
+      value={editing ? draft : shown}
+      onFocus={(event) => {
+        setEditing(true);
+        setDraft(shown);
+        event.currentTarget.select();
+      }}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => commit(draft)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          setDraft(shown);
+          setEditing(false);
+          event.currentTarget.blur();
+          return;
+        }
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        commit(event.currentTarget.value);
+      }}
+      onMouseDown={(event) => {
+        if (editing || event.button !== 0) return;
+        const chosen = segmentAt(event.currentTarget, event.clientX, segments, shown);
+        if (!chosen || (chosen.prefix === pane.prefix && (chosen.container ?? pane.container) === pane.container)) return;
+        event.preventDefault();
+        jump(chosen);
+      }}
+    />
   );
+}
+
+/** A click on a path segment navigates there. A click in the empty tail starts editing. */
+function segmentAt(input: HTMLInputElement, clientX: number, segments: PathSegment[], shown: string): PathSegment | null {
+  if (segments.length <= 1 || !shown) return null;
+  const style = window.getComputedStyle(input);
+  const canvas = document.createElement("canvas").getContext("2d");
+  if (!canvas) return null;
+  canvas.font = style.font;
+  const padding = Number.parseFloat(style.paddingLeft) || 0;
+  const x = clientX - input.getBoundingClientRect().left - padding + input.scrollLeft;
+  const separator = shown.includes("\\") ? "\\" : "/";
+  let cursor = 0;
+  for (let index = 0; index < segments.length; index += 1) {
+    const label = index === 0 && !shown.startsWith(separator) ? segments[index]?.label ?? "" : "";
+    const piece = index === 0 ? label : `${separator}${segments[index]?.label ?? ""}`;
+    cursor += canvas.measureText(piece).width;
+    if (x <= cursor) return segments[index] ?? null;
+  }
+  return null;
 }

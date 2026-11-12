@@ -68,18 +68,43 @@ function prefixOf(prefix: string): string {
   return prefix.endsWith("/") ? prefix : `${prefix}/`;
 }
 
-async function readPart(stream: Readable, size: number, signal?: AbortSignal): Promise<Buffer | null> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of stream) {
-    if (signal?.aborted) throw new Error("aborted");
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    chunks.push(buf);
-    total += buf.length;
-    if (total >= size) break;
+/**
+ * A file stream often hands back more than one part. Breaking the async iterator
+ * drops the rest of that chunk, so a large upload ends short and S3 rejects it.
+ * Leftover bytes stay here until the next part asks for them.
+ */
+class PartReader {
+  private pending: Buffer[] = [];
+  private pendingBytes = 0;
+  private done = false;
+  private iterator: AsyncIterator<unknown>;
+
+  constructor(stream: Readable) {
+    this.iterator = stream[Symbol.asyncIterator]();
   }
-  if (total === 0) return null;
-  return Buffer.concat(chunks, total);
+
+  async read(size: number, signal?: AbortSignal): Promise<Buffer | null> {
+    while (!this.done && this.pendingBytes < size) {
+      if (signal?.aborted) throw new Error("aborted");
+      const next = await this.iterator.next();
+      if (next.done) {
+        this.done = true;
+        break;
+      }
+      const buf = Buffer.isBuffer(next.value) ? next.value : Buffer.from(next.value as Uint8Array | string);
+      if (buf.length === 0) continue;
+      this.pending.push(buf);
+      this.pendingBytes += buf.length;
+    }
+    if (this.pendingBytes === 0) return null;
+    const body = Buffer.concat(this.pending, this.pendingBytes);
+    const take = Math.min(size, body.length);
+    const part = body.subarray(0, take);
+    const rest = body.subarray(take);
+    this.pending = rest.length ? [Buffer.from(rest)] : [];
+    this.pendingBytes = rest.length;
+    return Buffer.from(part);
+  }
 }
 
 export class S3Adapter implements StoreAdapter {
@@ -153,8 +178,9 @@ export class S3Adapter implements StoreAdapter {
     const size = opts.size ?? 0;
     // A known size under the part threshold, including an empty file, is one PutObject.
     // An unknown size stays on the multipart path so a long stream is not buffered whole.
+    const reader = new PartReader(stream);
     if (opts.size != null && size < MULTIPART_THRESHOLD && !opts.resume) {
-      const body = await readPart(stream, size, opts.signal);
+      const body = await reader.read(size || 1, opts.signal);
       await client.send(
         new PutObjectCommand({
           Bucket: container,
@@ -167,15 +193,16 @@ export class S3Adapter implements StoreAdapter {
       opts.onProgress?.(size, size);
       return;
     }
-    await this.multipart(client, container, key, stream, opts);
+    await this.multipart(client, container, key, reader, opts, opts.partSize && opts.partSize > 0 ? opts.partSize : PART_SIZE);
   }
 
   private async multipart(
     client: S3Client,
     container: string,
     key: string,
-    stream: Readable,
+    reader: PartReader,
     opts: PutOptions,
+    partSize = PART_SIZE,
   ): Promise<void> {
     let uploadId = opts.resume?.uploadId;
     const parts: CompletedPart[] = [...(opts.resume?.parts ?? [])];
@@ -192,7 +219,7 @@ export class S3Adapter implements StoreAdapter {
     let partNumber = parts.reduce((max, part) => Math.max(max, part.partNumber), 0);
     while (true) {
       if (opts.signal?.aborted) throw new Error("aborted");
-      const body = await readPart(stream, PART_SIZE, opts.signal);
+      const body = await reader.read(partSize, opts.signal);
       if (!body) break;
       partNumber += 1;
       const uploaded = await client.send(
@@ -202,6 +229,7 @@ export class S3Adapter implements StoreAdapter {
           UploadId: uploadId,
           PartNumber: partNumber,
           Body: body,
+          ContentLength: body.length,
         }),
         { abortSignal: opts.signal },
       );

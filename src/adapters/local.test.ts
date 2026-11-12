@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Account } from "../core/store";
 import { bufferStream, readAll } from "../testing/streams";
-import { LocalAdapter } from "./local";
+import { describeEntry, LocalAdapter, parsePowerShellDrives, parseWmicDrives, type LocalHost } from "./local";
 
 const account: Account = { id: "local", provider: "s3", displayName: "This Computer", settings: {} };
 const root = typeof process.getuid === "function" && process.getuid() === 0;
@@ -74,6 +74,48 @@ describe("LocalAdapter", () => {
     expect(await adapter.stat(account, "", missing)).toEqual({ exists: false });
     const stream = await adapter.get(account, "", missing);
     await expect(readAll(stream)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("keeps a folder when stat fails, the way a Windows junction does", async () => {
+    const rootDir = await scratch();
+    const junction = path.join(rootDir, "ProgramData");
+    await mkdir(junction);
+    const denied = Object.assign(new Error("operation not permitted"), { code: "EPERM" });
+    const described = await describeEntry(
+      { name: "ProgramData", isDirectory: () => true, isSymbolicLink: () => false },
+      junction,
+      async () => {
+        throw denied;
+      },
+      async () => {
+        throw denied;
+      },
+    );
+    expect(described).toMatchObject({ name: "ProgramData", kind: "folder" });
+  });
+
+  it("lists every mounted Windows drive instead of one home folder", async () => {
+    const host: LocalHost = {
+      platform: "win32",
+      drives: async () => [
+        { root: "C:\\", label: "Windows (C:)" },
+        { root: "D:\\", label: "Data (D:)" },
+      ],
+    };
+    const listing = new LocalAdapter("C:\\Users\\someone", host);
+    const drives = await listing.list(account, "", "");
+    expect(drives.map((entry) => entry.key)).toEqual(["C:\\", "D:\\"]);
+    expect(drives.every((entry) => entry.kind === "folder")).toBe(true);
+  });
+
+  it("reads drive letters from wmic and PowerShell", () => {
+    const wmic = ["DeviceID  VolumeName", "C:        Windows", "D:        ", "E:        Backup"].join("\r\n");
+    expect(parseWmicDrives(wmic).map((drive) => drive.label)).toEqual(["Windows (C:)", "D:", "Backup (E:)"]);
+    const powershell = JSON.stringify([
+      { DeviceID: "C:", VolumeName: "OS" },
+      { DeviceID: "Z:", VolumeName: "" },
+    ]);
+    expect(parsePowerShellDrives(powershell).map((drive) => drive.root)).toEqual(["C:\\", "Z:\\"]);
   });
 
   it.skipIf(root)("reports a permission failure", async () => {

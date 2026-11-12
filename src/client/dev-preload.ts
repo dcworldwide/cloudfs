@@ -26,6 +26,7 @@ const state: AppState = {
   ],
   bookmarks: [],
   home,
+  platform: "darwin",
   tabs: restored?.tabs ?? [
     {
       id: "tab-1",

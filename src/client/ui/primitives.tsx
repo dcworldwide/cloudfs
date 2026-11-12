@@ -97,21 +97,29 @@ export const IconToggle = styled(Toggle)`
   }
 `;
 
-export const CrumbButton = styled(Button)`
+export const PathField = styled.input`
+  flex: 1;
+  min-width: 120px;
   min-height: 28px;
-  padding: 0 2px;
-  border-color: transparent;
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
   box-shadow: none;
   color: ${({ theme }) => theme.color.muted};
+  caret-color: ${({ theme }) => theme.color.primary};
   font: 500 13px ${({ theme }) => theme.font};
-  cursor: pointer;
-  &:hover,
-  &[aria-current="page"] {
+  cursor: text;
+  &:hover {
     color: ${({ theme }) => theme.color.text};
+    background: ${({ theme }) => theme.color.bg};
   }
-  &:focus-visible {
-    outline: 2px solid ${({ theme }) => theme.color.primary};
-    outline-offset: 2px;
+  &:focus {
+    outline: none;
+    border-color: ${({ theme }) => theme.color.border};
+    background: ${({ theme }) => theme.color.bg};
+    color: ${({ theme }) => theme.color.text};
   }
 `;
 
@@ -257,10 +265,29 @@ export const ScrollViewport = styled(ScrollArea.Viewport)`
   height: 100%;
   width: 100%;
   overflow-anchor: none;
-  scrollbar-gutter: stable;
   &:focus {
     outline: none;
   }
+`;
+
+/** Always drawn, including an empty list. Overlay scrollbars disappear without a scroll wheel. */
+export const Scrollbar = styled(ScrollArea.Scrollbar)`
+  display: flex !important;
+  justify-content: center;
+  width: 10px;
+  padding: 2px;
+  background: ${({ theme }) => theme.color.bg};
+  opacity: 1 !important;
+  pointer-events: auto;
+  &[data-orientation="horizontal"] {
+    display: none !important;
+  }
+`;
+
+export const ScrollThumb = styled(ScrollArea.Thumb)`
+  width: 100%;
+  border-radius: 99px;
+  background: ${({ theme }) => theme.color.muted};
 `;
 
 export const RowButton = styled(BaseButton, {

@@ -387,7 +387,8 @@ function SourceEditor({
 
 export function AddStore() {
   const navigate = useNavigate()
-  const { refresh, accounts } = useConfig()
+  const { refresh, accounts, state } = useConfig()
+  const windows = state.platform === "win32"
   const [providers, setProviders] = useState<{ id: ProviderId; label: string; available: boolean }[]>([])
   const [unavailable, setUnavailable] = useState<string | null>(null)
   const [draft, setDraft] = useState<SourceDraft | null>(null)
@@ -430,8 +431,8 @@ export function AddStore() {
                   <ComputerIcon />
                 </Mark>
                 <SourceName>
-                  This Computer
-                  <SourceMeta>local</SourceMeta>
+                  {windows ? "This PC" : "This Computer"}
+                  <SourceMeta>{windows ? "one source for each drive" : "local"}</SourceMeta>
                 </SourceName>
               </SourceButton>
               <span />

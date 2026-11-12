@@ -29,7 +29,7 @@ Export writes a copy you choose. Import replaces the saved stores after a confir
 
 ## Stores
 
-This Computer browses a local folder. S3 takes a display name, access key, secret, region, SSL, and an optional endpoint for S3-compatible stores such as MinIO or Wasabi. FTP takes a host, port, user, password, and an optional start directory. Azure Blob and Google Cloud Storage appear in the add-store list and open an info dialog. They do not collect credentials.
+On Windows each mounted drive is its own source, the same way File Explorer lists them. Other systems keep one This Computer source. A local pane lists every folder it can see, including junctions whose target cannot be stat'ed. The location bar is a path you can click, copy, or edit; Enter opens what you typed. S3 takes a display name, access key, secret, region, SSL, and an optional endpoint for S3-compatible stores such as MinIO or Wasabi. FTP takes a host, port, user, password, and an optional start directory. Azure Blob and Google Cloud Storage appear in the add-store list and open an info dialog. They do not collect credentials.
 
 ## Transfers
 
@@ -44,7 +44,7 @@ Each pair uses the shortest path that still keeps the source until the destinati
 | FTP | same FTP server | stream from one connection to another | rename |
 | any other pair | | stream source to destination | stream, then delete the source |
 
-A move deletes the source only after the destination exists and its size matches. If the write fails, is cancelled, or the size does not match, the source stays. A temporary file is used only when a provider cannot stream, and that file is removed when the transfer ends, including when it fails. S3 to S3 does not stage the object on local disk. Nothing in the tests needs a live cloud account.
+A large upload is sent in parts. Each part keeps bytes the file stream already returned, so a big file is not cut short when a chunk is larger than one part. A move deletes the source only after the destination exists and its size matches. If the write fails, is cancelled, or the size does not match, the source stays. A temporary file is used only when a provider cannot stream, and that file is removed when the transfer ends, including when it fails. S3 to S3 does not stage the object on local disk. Nothing in the tests needs a live cloud account.
 
 The Release workflow runs `npm test` on Linux before packaging. The Package (linux), Package (windows), and Package (mac) jobs keep their names. A failing test fails Package (linux).
 

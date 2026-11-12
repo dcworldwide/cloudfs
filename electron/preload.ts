@@ -45,6 +45,7 @@ export interface AppState {
   accounts: PublicAccount[];
   bookmarks: string[];
   home: string;
+  platform: string;
   tabs: unknown;
   activeTabId: string | null;
   version: string;

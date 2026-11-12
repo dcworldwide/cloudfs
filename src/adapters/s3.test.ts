@@ -76,6 +76,23 @@ describe("S3Adapter", () => {
     expect(resumes[0]).toBe("up-1");
   });
 
+  it("keeps bytes a file stream returns past the end of a part", async () => {
+    const memory = new MemoryS3();
+    memory.createBucket("photos");
+    const adapter = new S3Adapter(() => memory.client());
+    const body = Buffer.alloc(64 * 1024 + 100, 7);
+    body[64 * 1024] = 9;
+    body[body.length - 1] = 3;
+    const stream = new Readable({
+      read() {
+        this.push(body);
+        this.push(null);
+      },
+    });
+    await adapter.put(account(), "photos", "setup.exe", stream, { size: body.length, partSize: 64 * 1024 });
+    expect(memory.getObject("photos", "setup.exe")).toEqual(body);
+  });
+
   it("requests a ranged get", async () => {
     const sent: { name: string; input: Record<string, unknown> }[] = [];
     const adapter = new S3Adapter(() => client(sent) as never);
