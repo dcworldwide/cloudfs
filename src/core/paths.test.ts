@@ -18,8 +18,8 @@ describe("path policy", () => {
   });
 
   it("treats each Windows drive as a parent the location bar can open", () => {
-    expect(joinKey("local", "C:\\", "Windows", "win32")).toBe("C:\\Windows");
-    expect(parentPrefix("local", "C:\\Users\\notes.txt", "win32")).toBe("C:\\Users");
+    expect(joinKey("local", "C:\\", "Windows")).toBe("C:\\Windows");
+    expect(parentPrefix("local", "C:\\Users\\notes.txt")).toBe("C:\\Users");
     expect(parentPrefix("local", "C:\\", "win32")).toBe("");
     expect(pathSegments("local", "C:\\Users\\Public", "", "win32").map((part) => part.label)).toEqual([
       "This PC",
