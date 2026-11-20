@@ -76,6 +76,25 @@ export function joinKey(provider: ProviderId, prefix: string, name: string, plat
   return base ? `${base}/${name}` : name;
 }
 
+/**
+ * Join a relative path (`src/main.txt`) onto the folder a copy is writing.
+ * `..` is dropped so a listing cannot escape the destination folder.
+ */
+export function destinationKey(provider: ProviderId, folder: string, relative: string): string {
+  let key = folder;
+  for (const part of relative.split("/")) {
+    if (!part || part === "." || part === "..") continue;
+    key = joinKey(provider, key, part);
+  }
+  return key;
+}
+
+/** Folder key in the shape `stat` and `mkdir` expect. S3 keeps the trailing slash. */
+export function asFolderKey(provider: ProviderId, key: string): string {
+  if (!key || !capabilities(provider).slashFolders) return key;
+  return key.endsWith("/") ? key : `${key}/`;
+}
+
 /** A renamed sibling of an existing key. */
 export function renamedKey(provider: ProviderId, from: string, name: string): string {
   return joinKey(provider, parentPrefix(provider, from), name);

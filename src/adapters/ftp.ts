@@ -13,6 +13,8 @@ export interface FtpSession {
   downloadTo(destination: Writable | string, fromRemotePath: string): Promise<unknown>;
   ensureDir(remoteDirPath: string): Promise<void>;
   cd(path: string): Promise<unknown>;
+  /** Delete a directory and its contents. basic-ftp walks it, then RMD. */
+  removeDir(path: string): Promise<unknown>;
   close(): void;
 }
 
@@ -208,6 +210,12 @@ export class FtpAdapter implements StoreAdapter {
   async mkdir(account: Account, _container: string, prefix: string): Promise<void> {
     await this.session(account, async (client, startDir) => {
       await client.ensureDir(ftpPath(startDir, prefix));
+    });
+  }
+
+  async removeDir(account: Account, _container: string, prefix: string): Promise<void> {
+    await this.session(account, async (client, startDir) => {
+      await client.removeDir(ftpPath(startDir, prefix));
     });
   }
 

@@ -97,6 +97,7 @@ export interface TransferInput {
   dest: PaneLocator & { key: string };
   name: string;
   bytesTotal?: number;
+  sourceKind?: "file" | "folder";
 }
 
 const api: CloudfsApi = {

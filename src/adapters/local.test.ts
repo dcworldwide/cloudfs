@@ -32,6 +32,8 @@ describe("LocalAdapter", () => {
     expect(entries.map((entry) => entry.name)).toEqual(["docs", "notes.txt"]);
     expect(entries[0]?.kind).toBe("folder");
     expect(entries[1]).toMatchObject({ kind: "file", size: 5 });
+    const hidden = await adapter.list(account, "", rootDir, { includeHidden: true });
+    expect(hidden.map((entry) => entry.name)).toEqual(["docs", ".hidden", "notes.txt"]);
   });
 
   it("writes, reads, copies, renames, and deletes a streamed file", async () => {

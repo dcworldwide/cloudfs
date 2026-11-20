@@ -23,6 +23,7 @@ function fake(partial: Partial<FtpSession> & { files?: FileInfo[] }): FtpSession
     downloadTo: async () => undefined,
     ensureDir: async () => undefined,
     cd: async () => undefined,
+    removeDir: async () => undefined,
     close: () => undefined,
     ...partial,
   };

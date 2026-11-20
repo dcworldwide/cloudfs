@@ -46,6 +46,8 @@ Each pair uses the shortest path that still keeps the source until the destinati
 
 A large upload is sent in parts. Each part keeps bytes the file stream already returned, so a big file is not cut short when a chunk is larger than one part. A move deletes the source only after the destination exists and its size matches. If the write fails, is cancelled, or the size does not match, the source stays. A temporary file is used only when a provider cannot stream, and that file is removed when the transfer ends, including when it fails. S3 to S3 does not stage the object on local disk. Nothing in the tests needs a live cloud account.
 
+A folder is one queue item. Cloudfs lists it (including names the panes hide), recreates every directory, and copies each file with the same transfer used for a single file, so the relative layout stays intact. An empty S3 folder is a zero-byte object whose key ends in `/`. A move deletes the source folder only after every file is in place. Moving a folder on this computer renames the directory. Moving one on the same FTP server renames it there. Copying a folder into itself is refused.
+
 The Release workflow runs `npm test` on Linux before packaging. The Package (linux), Package (windows), and Package (mac) jobs keep their names. A failing test fails Package (linux).
 
 ## Releases and auto-update

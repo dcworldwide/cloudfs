@@ -608,6 +608,338 @@ describe("cross-provider transfers", () => {
     expect(stored("s3", "taken-a.txt")).toEqual(Buffer.from("a"));
     expect(stored("s3", "taken-b.txt")).toEqual(Buffer.from("b"));
   });
+
+  const treeFiles: Record<string, string> = {
+    "readme.txt": "hello",
+    "src/main.txt": "main",
+    "blank.txt": "",
+    ".keep": "secret",
+  };
+  const treeDirs = ["notes", "src/empty"];
+
+  async function seedTree(side: Side, root: string, store: "a" | "b" = "a", container = "box"): Promise<void> {
+    if (side === "local") {
+      await mkdir(path.join(localRoot, root, "src", "empty"), { recursive: true });
+      await mkdir(path.join(localRoot, root, "notes"), { recursive: true });
+      for (const [relative, body] of Object.entries(treeFiles)) {
+        await writeFile(path.join(localRoot, root, relative), body);
+      }
+      return;
+    }
+    if (side === "s3") {
+      const memory = store === "b" ? s3b : s3;
+      memory.putObject(container, `${root}/`, Buffer.alloc(0));
+      memory.putObject(container, `${root}/src/`, Buffer.alloc(0));
+      for (const dir of treeDirs) memory.putObject(container, `${root}/${dir}/`, Buffer.alloc(0));
+      for (const [relative, body] of Object.entries(treeFiles)) {
+        memory.putObject(container, `${root}/${relative}`, Buffer.from(body));
+      }
+      return;
+    }
+    const server = store === "b" ? ftpB : ftpA;
+    server.makeDir(`/${root}/src/empty`);
+    server.makeDir(`/${root}/notes`);
+    for (const [relative, body] of Object.entries(treeFiles)) server.write(`/${root}/${relative}`, body);
+  }
+
+  function folderLocator(side: Side, root: string, store: "a" | "b" = "a", container = "box", slash = true): Locator {
+    if (side === "local") return { storeId: "local", provider: "local", container: "", key: path.join(localRoot, root) };
+    if (side === "s3") {
+      return {
+        storeId: store === "b" ? "s3-b" : "s3-a",
+        provider: "s3",
+        container,
+        key: slash ? `${root}/` : root,
+      };
+    }
+    return { storeId: store === "b" ? "ftp-b" : "ftp-a", provider: "ftp", container: "", key: root };
+  }
+
+  function treeBytes(side: Side, root: string, relative: string, store: "a" | "b" = "a", container = "box"): Buffer | undefined {
+    if (side === "local") {
+      try {
+        return readFileSync(path.join(localRoot, root, relative));
+      } catch {
+        return undefined;
+      }
+    }
+    if (side === "s3") return (store === "b" ? s3b : s3).getObject(container, `${root}/${relative}`);
+    return (store === "b" ? ftpB : ftpA).read(`/${root}/${relative}`);
+  }
+
+  function treeDir(side: Side, root: string, relative: string, store: "a" | "b" = "a", container = "box"): boolean {
+    if (side === "local") {
+      try {
+        return statSync(path.join(localRoot, root, relative)).isDirectory();
+      } catch {
+        return false;
+      }
+    }
+    if (side === "s3") return (store === "b" ? s3b : s3).getObject(container, `${root}/${relative}/`) != null;
+    const server = store === "b" ? ftpB : ftpA;
+    const full = `/${root}/${relative}`;
+    return server.exists(full) && server.read(full) === undefined;
+  }
+
+  function expectTree(side: Side, root: string, store: "a" | "b" = "a", container = "box"): void {
+    for (const [relative, body] of Object.entries(treeFiles)) {
+      expect(treeBytes(side, root, relative, store, container)?.toString(), relative).toBe(body);
+    }
+    for (const dir of treeDirs) expect(treeDir(side, root, dir, store, container), dir).toBe(true);
+  }
+
+  function expectTreeGone(side: Side, root: string, store: "a" | "b" = "a", container = "box"): void {
+    expect(treeBytes(side, root, "readme.txt", store, container)).toBeUndefined();
+    if (side === "local") {
+      expect(() => statSync(path.join(localRoot, root))).toThrow();
+      return;
+    }
+    if (side === "s3") {
+      expect((store === "b" ? s3b : s3).getObject(container, `${root}/`)).toBeUndefined();
+      return;
+    }
+    expect((store === "b" ? ftpB : ftpA).exists(`/${root}`)).toBe(false);
+  }
+
+  async function runFolder(
+    mode: "copy" | "move",
+    from: Side,
+    to: Side,
+    label: string,
+    extra: { fromStore?: "a" | "b"; toStore?: "a" | "b"; fromContainer?: string; toContainer?: string; sourceKind?: boolean } = {},
+  ): Promise<TransferJob> {
+    const fromStore = extra.fromStore ?? "a";
+    const toStore = extra.toStore ?? "a";
+    const fromContainer = extra.fromContainer ?? "box";
+    const toContainer = extra.toContainer ?? "box";
+    await seedTree(from, `${label}-src`, fromStore, fromContainer);
+    const source = folderLocator(from, `${label}-src`, fromStore, fromContainer);
+    const dest = folderLocator(to, `${label}-dst`, toStore, toContainer, false);
+    const kind: JobKind =
+      mode === "move" ? "move" : from === "local" && to !== "local" ? "upload" : from !== "local" && to === "local" ? "download" : "copy";
+    const job = coordinator.enqueue({
+      id: randomUUID(),
+      kind,
+      source,
+      dest,
+      name: `${label}-src`,
+      bytesDone: 0,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+      ...(extra.sourceKind === false ? {} : { sourceKind: "folder" as const }),
+    });
+    const started = Date.now();
+    while (job.status === "queued" || job.status === "running" || job.status === "paused") {
+      if (Date.now() - started > 20_000) throw new Error(`folder transfer stuck at ${job.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return job;
+  }
+
+  for (const from of providers) {
+    for (const to of providers) {
+      for (const mode of ["copy", "move"] as const) {
+        it(`${mode}s a nested folder from ${from} to ${to}`, async () => {
+          const label = `folder-${from}-${to}-${mode}`;
+          const job = await runFolder(mode, from, to, label);
+          expect(job.status, job.error).toBe("done");
+          expectTree(to, `${label}-dst`);
+          if (mode === "move") expectTreeGone(from, `${label}-src`);
+          else expectTree(from, `${label}-src`);
+          expect(tempFiles).toEqual([]);
+          if (from === "s3" && to === "s3") {
+            expect(s3.calls).toContain("CopyObjectCommand");
+            expect(s3.calls).not.toContain("GetObjectCommand");
+            if (mode === "move") expect(s3.calls).toContain("DeleteObjectsCommand");
+          }
+          if (from === "ftp" && to === "ftp" && mode === "move") {
+            expect(ftpA.commands).toContain("RNFR");
+            expect(ftpA.commands).not.toContain("RETR");
+            expect(ftpA.commands).not.toContain("STOR");
+          } else if (from === "ftp" || to === "ftp") {
+            if (from === "ftp") expect(ftpA.commands).toContain("RETR");
+            if (to === "ftp") expect(ftpA.commands).toContain("STOR");
+            expect(ftpA.commands).not.toContain("RNFR");
+          }
+        }, 30_000);
+      }
+    }
+  }
+
+  it("copies a folder between buckets on one S3 account without downloading", async () => {
+    const job = await runFolder("copy", "s3", "s3", "folder-buckets", { toContainer: "other" });
+    expect(job.status, job.error).toBe("done");
+    expectTree("s3", "folder-buckets-dst", "a", "other");
+    expectTree("s3", "folder-buckets-src");
+    expect(s3.calls).toContain("CopyObjectCommand");
+    expect(s3.calls).not.toContain("GetObjectCommand");
+    expect(tempFiles).toEqual([]);
+  });
+
+  it("streams a folder between two S3 accounts", async () => {
+    const job = await runFolder("move", "s3", "s3", "folder-accounts", { toStore: "b" });
+    expect(job.status, job.error).toBe("done");
+    expectTree("s3", "folder-accounts-dst", "b");
+    expectTreeGone("s3", "folder-accounts-src");
+    expect(s3.calls).toContain("GetObjectCommand");
+    expect(s3.calls).not.toContain("CopyObjectCommand");
+    expect(s3b.calls).toContain("PutObjectCommand");
+    expect(s3b.calls).not.toContain("CopyObjectCommand");
+    expect(tempFiles).toEqual([]);
+  });
+
+  it("copies an S3 prefix that has no folder marker", async () => {
+    s3.putObject("box", "implicit/readme.txt", Buffer.from("hello"));
+    s3.putObject("box", "implicit/src/main.txt", Buffer.from("main"));
+    const job = coordinator.enqueue({
+      id: randomUUID(),
+      kind: "download",
+      source: folderLocator("s3", "implicit"),
+      dest: folderLocator("local", "implicit-dst", "a", "box", false),
+      name: "implicit",
+      bytesDone: 0,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+    });
+    const started = Date.now();
+    while (job.status === "queued" || job.status === "running") {
+      if (Date.now() - started > 15_000) throw new Error(`folder transfer stuck at ${job.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(job.status, job.error).toBe("done");
+    expect(treeBytes("local", "implicit-dst", "readme.txt")?.toString()).toBe("hello");
+    expect(treeBytes("local", "implicit-dst", "src/main.txt")?.toString()).toBe("main");
+  });
+
+  it("detects a local folder when the job does not say it is one", async () => {
+    const job = await runFolder("copy", "local", "s3", "folder-detect", { sourceKind: false });
+    expect(job.status, job.error).toBe("done");
+    expectTree("s3", "folder-detect-dst");
+    expectTree("local", "folder-detect-src");
+  });
+
+  it("reports one folder job's progress as the sum of its files", async () => {
+    const root = "folder-progress-src";
+    await mkdir(path.join(localRoot, root), { recursive: true });
+    const body = Buffer.alloc(32 * 1024, 4);
+    await writeFile(path.join(localRoot, root, "big.bin"), body);
+    await writeFile(path.join(localRoot, root, "small.txt"), "ok");
+    const job = coordinator.enqueue({
+      id: randomUUID(),
+      kind: "copy",
+      sourceKind: "folder",
+      source: folderLocator("local", root),
+      dest: folderLocator("local", "folder-progress-dst", "a", "box", false),
+      name: root,
+      bytesDone: 0,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+    });
+    const started = Date.now();
+    while (job.status === "queued" || job.status === "running") {
+      if (Date.now() - started > 15_000) throw new Error(`folder transfer stuck at ${job.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(job.status, job.error).toBe("done");
+    expect(job.bytesTotal).toBe(body.length + 2);
+    expect(job.bytesDone).toBe(body.length + 2);
+    expect(progress.some((bytes) => bytes > 0 && bytes < body.length + 2)).toBe(true);
+    expect(readFileSync(path.join(localRoot, "folder-progress-dst", "big.bin"))).toEqual(body);
+  });
+
+  it("keeps the source folder when a nested upload fails", async () => {
+    ftpA.dropNext = true;
+    const job = await runFolder("move", "local", "ftp", "folder-drop");
+    expect(job.status).toBe("error");
+    expect(job.error).toMatch(/src\/main\.txt/);
+    expectTree("local", "folder-drop-src");
+    expect(tempFiles).toEqual([]);
+  });
+
+  it("does not create a destination when the source folder is missing", async () => {
+    const job = coordinator.enqueue({
+      id: randomUUID(),
+      kind: "upload",
+      sourceKind: "folder",
+      source: folderLocator("local", "missing-folder"),
+      dest: folderLocator("s3", "missing-folder-dst", "a", "box", false),
+      name: "missing-folder",
+      bytesDone: 0,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+    });
+    const started = Date.now();
+    while (job.status === "queued" || job.status === "running") {
+      if (Date.now() - started > 15_000) throw new Error(`folder transfer stuck at ${job.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(job.status).toBe("error");
+    expect(job.error).toMatch(/not found/);
+    expect(s3.getObject("box", "missing-folder-dst/")).toBeUndefined();
+  });
+
+  it("refuses to copy a folder into itself", async () => {
+    await seedTree("local", "loop");
+    const job = coordinator.enqueue({
+      id: randomUUID(),
+      kind: "copy",
+      sourceKind: "folder",
+      source: folderLocator("local", "loop"),
+      dest: folderLocator("local", path.join("loop", "inner"), "a", "box", false),
+      name: "loop",
+      bytesDone: 0,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+    });
+    const started = Date.now();
+    while (job.status === "queued" || job.status === "running") {
+      if (Date.now() - started > 15_000) throw new Error(`folder transfer stuck at ${job.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(job.status).toBe("error");
+    expect(job.error).toMatch(/itself/);
+    expectTree("local", "loop");
+    expect(treeDir("local", "loop", "inner")).toBe(false);
+  });
+
+  it("falls back to a recursive copy when a local folder rename crosses devices", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "cloudfs-folder-exdev-"));
+    try {
+      const source = path.join(dir, "docs");
+      const dest = path.join(dir, "out");
+      await mkdir(path.join(source, "empty"), { recursive: true });
+      await writeFile(path.join(source, "a.txt"), "cross");
+      const crossed = new LocalAdapter(dir);
+      crossed.rename = async () => {
+        const error = new Error("cross device") as NodeJS.ErrnoException;
+        error.code = "EXDEV";
+        throw error;
+      };
+      const queue = new TransferCoordinator({
+        dir,
+        registry: new AdapterRegistry(),
+        local: crossed,
+        accounts: () => [],
+        concurrency: 1,
+        tempDir: path.join(dir, "temp"),
+        onTempFile: () => {
+          throw new Error("folder move should stream, not spool");
+        },
+      });
+      const job = queue.enqueue({
+        ...makeJob("move", source, dest),
+        sourceKind: "folder",
+        name: "docs",
+      });
+      await settle(job);
+      expect(job.status, job.error).toBe("done");
+      expect(await readFile(path.join(dest, "a.txt"), "utf8")).toBe("cross");
+      expect(statSync(path.join(dest, "empty")).isDirectory()).toBe(true);
+      expect(() => statSync(source)).toThrow();
+    } finally {
+      await removeTree(dir);
+    }
+  });
 });
 
 function s3Account(id: string): Account {

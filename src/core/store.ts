@@ -75,6 +75,11 @@ export interface GetOptions {
   signal?: AbortSignal;
 }
 
+/** `includeHidden` is for a folder copy. Panes keep hiding dotfiles. */
+export interface ListOptions {
+  includeHidden?: boolean;
+}
+
 export interface CopyRequest {
   from: Locator;
   to: Locator;
@@ -99,7 +104,7 @@ export interface StoreAdapter {
   available: boolean;
   test(account: Account): Promise<void>;
   listContainers(account: Account): Promise<Entry[]>;
-  list(account: Account, container: string, prefix: string): Promise<Entry[]>;
+  list(account: Account, container: string, prefix: string, opts?: ListOptions): Promise<Entry[]>;
   put(
     account: Account,
     container: string,
@@ -111,6 +116,8 @@ export interface StoreAdapter {
   remove(account: Account, container: string, keys: string[]): Promise<void>;
   copy(account: Account, request: CopyRequest): Promise<void>;
   mkdir(account: Account, container: string, prefix: string): Promise<void>;
+  /** Remove a directory and everything under it. Local and S3 use `remove` instead. */
+  removeDir?(account: Account, container: string, prefix: string): Promise<void>;
   stat(account: Account, container: string, key: string): Promise<EntryStat>;
   /**
    * When false, bytes cannot be piped straight into put and a transfer spools
@@ -136,6 +143,8 @@ export interface TransferJob {
   createdAt: string;
   /** Present while a multipart upload can be resumed. */
   resume?: MultipartResume;
+  /** Set when the pane knows the source is a file or a folder. Omitted jobs are detected. */
+  sourceKind?: "file" | "folder";
 }
 
 export function locatorKey(locator: Locator): string {

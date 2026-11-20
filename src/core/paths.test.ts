@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { folderKey, joinKey, parentPrefix, parsePathText, pathSegments, pathText } from "./paths";
+import { asFolderKey, destinationKey, folderKey, joinKey, parentPrefix, parsePathText, pathSegments, pathText } from "./paths";
 
 describe("path policy", () => {
   it("keeps a trailing slash on S3 folders and omits it on FTP", () => {
@@ -37,6 +37,18 @@ describe("path policy", () => {
     expect(pathText("local", "C:\\Users", "", "win32")).toBe("C:\\Users");
     expect(parsePathText("local", "D:/Games", "win32")).toEqual({ container: "", prefix: "D:\\Games" });
     expect(parsePathText("local", "", "win32")).toEqual({ container: "", prefix: "" });
+  });
+
+  it("joins a folder copy onto S3, FTP, and a Windows drive", () => {
+    expect(destinationKey("s3", "inbox/docs", "src/main.txt")).toBe("inbox/docs/src/main.txt");
+    expect(destinationKey("s3", "inbox/docs/", "src/main.txt")).toBe("inbox/docs/src/main.txt");
+    expect(destinationKey("ftp", "/incoming/docs", "src/main.txt")).toBe("/incoming/docs/src/main.txt");
+    expect(destinationKey("local", "C:\\Users\\Public\\docs", "src/main.txt")).toBe("C:\\Users\\Public\\docs\\src\\main.txt");
+    expect(destinationKey("s3", "inbox/docs", "../escape.txt")).toBe("inbox/docs/escape.txt");
+    expect(asFolderKey("s3", "inbox/docs")).toBe("inbox/docs/");
+    expect(asFolderKey("s3", "inbox/docs/")).toBe("inbox/docs/");
+    expect(asFolderKey("ftp", "/incoming/docs")).toBe("/incoming/docs");
+    expect(asFolderKey("local", "C:\\")).toBe("C:\\");
   });
 
   it("keeps an edited S3 location on the same bucket", () => {

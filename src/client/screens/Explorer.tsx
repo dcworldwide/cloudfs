@@ -156,6 +156,12 @@ function formatSize(size?: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
+function clipItems(entries: ListedEntry[], keys: string[]): ClipItem[] {
+  return entries
+    .filter((entry) => keys.includes(entry.key))
+    .map((entry) => ({ key: entry.key, name: entry.name, kind: entry.kind }));
+}
+
 function sourceName(pane: PaneState, accounts: PublicAccount[], platform = "darwin"): string {
   if (pane.provider !== "local") return accounts.find((account) => account.id === pane.storeId)?.displayName ?? "Store";
   if (platform === "win32") return driveTitle(pane.prefix);
@@ -170,6 +176,7 @@ function driveTitle(prefix: string): string {
 interface ClipItem {
   key: string;
   name: string;
+  kind?: "file" | "folder";
 }
 
 interface Clipboard {
@@ -217,6 +224,7 @@ export function transferItems(
       return {
         kind,
         name: item.name,
+        ...(item.kind ? { sourceKind: item.kind } : {}),
         source: { ...source, key: item.key },
         dest: { ...dest, key: destKey },
       } satisfies TransferInput;
@@ -549,7 +557,7 @@ function FilePane({
   }, [side, selected, entries, pane, clipboard, setClipboard, visible, anchor, paneId, workspace]);
 
   function copyItems(keys: string[], mode: "copy" | "move") {
-    const items = entries.filter((entry) => keys.includes(entry.key)).map((entry) => ({ key: entry.key, name: entry.name }));
+    const items = clipItems(entries, keys);
     if (!items.length) return;
     setClipboard({ source: pane, items, mode });
   }
@@ -563,7 +571,7 @@ function FilePane({
   }
 
   function sendToOther(keys: string[], mode: "copy" | "move") {
-    const items = entries.filter((entry) => keys.includes(entry.key)).map((entry) => ({ key: entry.key, name: entry.name }));
+    const items = clipItems(entries, keys);
     if (!items.length) return;
     const other = workspace.displayed[side === "left" ? "right" : "left"];
     const jobs = transferItems(pane, other, items, mode === "move");
@@ -804,8 +812,8 @@ function FilePane({
                 }
                 onDragStart={(event) => {
                   const keys = selected.includes(entry.key)
-                    ? entries.filter((item) => selected.includes(item.key)).map((item) => ({ key: item.key, name: item.name }))
-                    : [{ key: entry.key, name: entry.name }];
+                    ? clipItems(entries, selected)
+                    : [{ key: entry.key, name: entry.name, kind: entry.kind }];
                   event.dataTransfer.setData("application/cloudfs", JSON.stringify({ side, keys }));
                   event.dataTransfer.effectAllowed = "copyMove";
                 }}
