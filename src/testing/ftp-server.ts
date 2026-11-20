@@ -90,6 +90,11 @@ export class TestFtpServer {
     this.insert(full, { kind: "file", body: Buffer.from(body), modified: new Date() });
   }
 
+  /** Create an empty directory. Parents are created with it. */
+  makeDir(posixPath: string): void {
+    this.ensureDir(normalize(posixPath));
+  }
+
   read(posixPath: string): Buffer | undefined {
     const node = this.lookup(normalize(posixPath));
     return node?.kind === "file" ? node.body : undefined;
@@ -170,6 +175,9 @@ export class TestFtpServer {
         case "MKD":
           this.mkdir(session, arg);
           return;
+        case "RMD":
+          this.rmd(session, arg);
+          return;
         case "DELE":
           this.dele(session, arg);
           return;
@@ -238,6 +246,30 @@ export class TestFtpServer {
     }
     this.ensureDir(full);
     this.reply(session, 257, `"${full}" created`);
+  }
+
+  private rmd(session: Session, arg: string): void {
+    const full = resolvePath(session.cwd, arg);
+    if (full === "/") {
+      this.reply(session, 550, "Cannot remove root");
+      return;
+    }
+    if (this.denied.has(full)) {
+      this.reply(session, 550, "Permission denied");
+      return;
+    }
+    const located = this.parent(full);
+    const node = located?.dir.children.get(located.name);
+    if (!located || node?.kind !== "dir") {
+      this.reply(session, 550, "No such directory");
+      return;
+    }
+    if (node.children.size > 0) {
+      this.reply(session, 550, "Directory not empty");
+      return;
+    }
+    located.dir.children.delete(located.name);
+    this.reply(session, 250, "Removed");
   }
 
   private dele(session: Session, arg: string): void {

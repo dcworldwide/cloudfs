@@ -107,6 +107,22 @@ describe("transferItems", () => {
     expect(transferTouches(windows, { source: back[0].source, dest: back[0].dest })).toBe(true);
   });
 
+  it("marks a folder so the transfer walks it", () => {
+    const folder = { key: "/home/docs", name: "docs", kind: "folder" as const };
+    const [uploaded] = transferItems(local, cloud, [folder], false);
+    expect(uploaded).toMatchObject({
+      kind: "upload",
+      name: "docs",
+      sourceKind: "folder",
+      source: { provider: "local", key: "/home/docs" },
+      dest: { provider: "s3", container: "photos", key: "docs" },
+    });
+    const nested = transferItems(cloud, { ...cloud, prefix: "inbox/" }, [{ key: "docs/", name: "docs", kind: "folder" }], false);
+    expect(nested[0]).toMatchObject({ kind: "copy", sourceKind: "folder", dest: { key: "inbox/docs" } });
+    const downloaded = transferItems(cloud, local, [{ key: "docs/", name: "docs", kind: "folder" }], true);
+    expect(downloaded[0]).toMatchObject({ kind: "move", sourceKind: "folder", dest: { key: "/home/docs" } });
+  });
+
   it("does not move a folder into itself", () => {
     const dest = folderDest(cloud, { key: "production/", name: "production" });
     expect(transferItems(cloud, dest, [{ key: "production/", name: "production" }], true)).toHaveLength(0);

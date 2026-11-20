@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { Account, CopyRequest, Entry, EntryStat, GetOptions, PutOptions, StoreAdapter } from "../core/store";
+import type { Account, CopyRequest, Entry, EntryStat, GetOptions, ListOptions, PutOptions, StoreAdapter } from "../core/store";
 
 const execFileAsync = promisify(execFile);
 
@@ -170,13 +170,13 @@ export class LocalAdapter implements StoreAdapter {
     return path.resolve(key);
   }
 
-  async list(_account: Account, _container: string, prefix: string): Promise<Entry[]> {
+  async list(_account: Account, _container: string, prefix: string, opts?: ListOptions): Promise<Entry[]> {
     if (isDriveList(prefix, this.host.platform)) return this.listContainers();
     const dir = this.resolve(prefix);
     const names = await readdir(dir, { withFileTypes: true });
     const entries: Entry[] = [];
     for (const item of names) {
-      if (item.name.startsWith(".")) continue;
+      if (!opts?.includeHidden && item.name.startsWith(".")) continue;
       const full = path.join(dir, item.name);
       const listed = await describeEntry(item, full);
       if (listed) entries.push(listed);
