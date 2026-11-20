@@ -85,7 +85,7 @@ export class TransferCoordinator {
 
   private async run(job: TransferJob, signal: AbortSignal): Promise<void> {
     if (job.kind === "delete") {
-      await this.remove(job);
+      await this.deleteEntry(job);
       return;
     }
     if (await this.isFolderJob(job)) {
@@ -262,6 +262,35 @@ export class TransferCoordinator {
     }
   }
 
+  /**
+   * Delete one queue item. A folder removes the directory and every child.
+   * A file removes that key only, so a prefix that shares the file's name stays.
+   */
+  private async deleteEntry(job: TransferJob): Promise<void> {
+    if (await this.isFolderJob(job)) {
+      await this.deleteFolder(job.source);
+      return;
+    }
+    await this.remove(job);
+  }
+
+  /**
+   * Local `rm` and FTP `removeDir` delete a tree themselves.
+   * Every other store uses the same listing walk as a folder copy, then deletes those keys.
+   */
+  private async deleteFolder(root: Locator): Promise<void> {
+    const recursive = root.provider === "local" || Boolean(this.opts.registry.get(root.provider).removeDir);
+    await this.removeSourceTree(root, recursive ? [] : await this.listTree(root));
+  }
+
+  private listTree(root: Locator): Promise<WalkNode[]> {
+    return walkFolder(
+      root,
+      (locator) => this.listLocator(locator),
+      (locator) => this.folderIdentity(locator),
+    );
+  }
+
   private async remove(job: TransferJob): Promise<void> {
     if (job.source.provider === "local") {
       await this.opts.local.remove(LOCAL, "", [job.source.key]);
@@ -364,11 +393,7 @@ export class TransferCoordinator {
   }
 
   private async copyFolderFiles(job: TransferJob, signal: AbortSignal, removeSource: boolean): Promise<void> {
-    const nodes = await walkFolder(
-      job.source,
-      (locator) => this.listLocator(locator),
-      (locator) => this.folderIdentity(locator),
-    );
+    const nodes = await this.listTree(job.source);
     const files = nodes.filter((node) => node.kind === "file");
     for (const file of files) {
       if (file.size != null) continue;

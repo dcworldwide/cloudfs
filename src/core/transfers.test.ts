@@ -125,6 +125,8 @@ describe("cross-provider transfers", () => {
     progress.length = 0;
     s3.calls.length = 0;
     s3b.calls.length = 0;
+    s3.pageSize = 1000;
+    s3b.pageSize = 1000;
     s3.failNext = null;
     s3b.failNext = null;
     s3.denied.clear();
@@ -939,6 +941,115 @@ describe("cross-provider transfers", () => {
     } finally {
       await removeTree(dir);
     }
+  });
+
+  async function runDelete(source: Locator, name: string, sourceKind?: "file" | "folder"): Promise<TransferJob> {
+    const job = coordinator.enqueue({
+      id: randomUUID(),
+      kind: "delete",
+      source,
+      dest: source,
+      name,
+      bytesDone: 0,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+      ...(sourceKind ? { sourceKind } : {}),
+    });
+    const started = Date.now();
+    while (job.status === "queued" || job.status === "running" || job.status === "paused") {
+      if (Date.now() - started > 20_000) throw new Error(`delete stuck at ${job.status}`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return job;
+  }
+
+  function expectRemoved(side: Side, root: string): void {
+    expect(treeBytes(side, root, "readme.txt"), "readme").toBeUndefined();
+    expect(treeBytes(side, root, "src/main.txt"), "nested file").toBeUndefined();
+    expect(treeBytes(side, root, ".keep"), "hidden file").toBeUndefined();
+    expect(treeBytes(side, root, "blank.txt"), "empty file").toBeUndefined();
+    expect(treeDir(side, root, "notes"), "empty notes").toBe(false);
+    expect(treeDir(side, root, "src/empty"), "nested empty dir").toBe(false);
+    if (side === "local") {
+      expect(() => statSync(path.join(localRoot, root))).toThrow();
+      return;
+    }
+    if (side === "s3") {
+      expect(s3.getObject("box", `${root}/`), "folder marker").toBeUndefined();
+      expect(s3.getObject("box", `${root}/src/`), "nested marker").toBeUndefined();
+      return;
+    }
+    expect(ftpA.exists(`/${root}`)).toBe(false);
+  }
+
+  for (const side of providers) {
+    it(`deletes a nested folder on ${side} and leaves a sibling`, async () => {
+      const root = `del-nested-${side}`;
+      const keep = `del-nested-${side}-keep.txt`;
+      await seedTree(side, root);
+      seed(side, keep, Buffer.from("keep"));
+      if (side === "s3") s3.pageSize = 1;
+      try {
+        const job = await runDelete(folderLocator(side, root), root, "folder");
+        expect(job.status, job.error).toBe("done");
+        expectRemoved(side, root);
+        expect(stored(side, keep)?.toString()).toBe("keep");
+      } finally {
+        if (side === "s3") s3.pageSize = 1000;
+      }
+    }, 30_000);
+
+    it(`deletes an empty folder on ${side}`, async () => {
+      const root = `del-empty-${side}`;
+      if (side === "local") await mkdir(path.join(localRoot, root));
+      else if (side === "s3") s3.putObject("box", `${root}/`, Buffer.alloc(0));
+      else ftpA.makeDir(`/${root}`);
+      const job = await runDelete(folderLocator(side, root), root, "folder");
+      expect(job.status, job.error).toBe("done");
+      if (side === "local") expect(() => statSync(path.join(localRoot, root))).toThrow();
+      else if (side === "s3") expect(s3.getObject("box", `${root}/`)).toBeUndefined();
+      else expect(ftpA.exists(`/${root}`)).toBe(false);
+    });
+
+    it(`deletes one file on ${side} and leaves the rest of the folder`, async () => {
+      const root = `del-file-${side}`;
+      await seedTree(side, root);
+      const relative = side === "local" ? path.join(root, "readme.txt") : `${root}/readme.txt`;
+      const job = await runDelete(locator(side, relative), "readme.txt", "file");
+      expect(job.status, job.error).toBe("done");
+      expect(treeBytes(side, root, "readme.txt")).toBeUndefined();
+      expect(treeBytes(side, root, "src/main.txt")?.toString()).toBe("main");
+      expect(treeDir(side, root, "notes")).toBe(true);
+      if (side === "local") expect(statSync(path.join(localRoot, root)).isDirectory()).toBe(true);
+      else if (side === "s3") expect(s3.getObject("box", `${root}/`)).toBeDefined();
+      else expect(ftpA.exists(`/${root}`)).toBe(true);
+    });
+  }
+
+  it("deletes an S3 prefix that has no folder marker", async () => {
+    s3.putObject("box", "implicit-del/readme.txt", Buffer.from("hello"));
+    s3.putObject("box", "implicit-del/src/main.txt", Buffer.from("main"));
+    s3.putObject("box", "implicit-del-extra/keep.txt", Buffer.from("keep"));
+    s3.pageSize = 1;
+    try {
+      const job = await runDelete(folderLocator("s3", "implicit-del"), "implicit-del");
+      expect(job.status, job.error).toBe("done");
+      expect(s3.getObject("box", "implicit-del/readme.txt")).toBeUndefined();
+      expect(s3.getObject("box", "implicit-del/src/main.txt")).toBeUndefined();
+      expect(s3.getObject("box", "implicit-del/")).toBeUndefined();
+      expect(s3.getObject("box", "implicit-del-extra/keep.txt")?.toString()).toBe("keep");
+    } finally {
+      s3.pageSize = 1000;
+    }
+  });
+
+  it("deletes an S3 file without deleting a prefix that shares its name", async () => {
+    s3.putObject("box", "samename", Buffer.from("file"));
+    s3.putObject("box", "samename/child.txt", Buffer.from("child"));
+    const job = await runDelete(locator("s3", "samename"), "samename", "file");
+    expect(job.status, job.error).toBe("done");
+    expect(s3.getObject("box", "samename")).toBeUndefined();
+    expect(s3.getObject("box", "samename/child.txt")?.toString()).toBe("child");
   });
 });
 

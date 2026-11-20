@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asFolderKey, destinationKey, folderKey, joinKey, parentPrefix, parsePathText, pathSegments, pathText } from "./paths";
+import { asFolderKey, destinationKey, folderKey, joinKey, parentPrefix, parentSegment, parsePathText, pathSegments, pathText } from "./paths";
 
 describe("path policy", () => {
   it("keeps a trailing slash on S3 folders and omits it on FTP", () => {
@@ -55,5 +55,24 @@ describe("path policy", () => {
     expect(pathText("s3", "2024/", "photos")).toBe("photos/2024/");
     expect(parsePathText("s3", "photos/2024/trips")).toEqual({ container: "photos", prefix: "2024/trips/" });
     expect(pathSegments("s3", "2024/", "photos").map((part) => part.label)).toEqual(["Buckets", "photos", "2024"]);
+  });
+
+  it("steps to the parent breadcrumb and stops at the root", () => {
+    const bucket = pathSegments("s3", "file-transfer/more/", "dnrmmrrd-k8s-poc");
+    expect(parentSegment(bucket)).toMatchObject({ label: "file-transfer", prefix: "file-transfer/", container: "dnrmmrrd-k8s-poc" });
+    expect(parentSegment(pathSegments("s3", "", "photos"))).toMatchObject({ label: "Buckets", prefix: "", container: "" });
+    expect(parentSegment(pathSegments("s3", "", ""))).toBeNull();
+
+    const ftp = pathSegments("ftp", "/incoming/docs", "");
+    expect(ftp.map((part) => part.label)).toEqual(["Root", "incoming", "docs"]);
+    expect(parentSegment(ftp)).toEqual(ftp[1]);
+    expect(parentSegment(pathSegments("ftp", "", ""))).toBeNull();
+
+    expect(parentSegment(pathSegments("local", "/", "", "linux"))).toBeNull();
+    expect(pathSegments("local", "/Users/preview", "", "linux").map((part) => part.prefix)).toEqual(["/", "/Users", "/Users/preview"]);
+    expect(pathSegments("local", "relative/docs", "", "linux").map((part) => part.prefix)).toEqual(["", "relative", "relative/docs"]);
+    expect(parentSegment(pathSegments("local", "/Users/preview", "", "linux"))).toMatchObject({ label: "Users", prefix: "/Users" });
+    expect(parentSegment(pathSegments("local", "C:\\", "", "win32"))).toMatchObject({ label: "This PC", prefix: "" });
+    expect(parentSegment(pathSegments("local", "C:\\Users\\Public", "", "win32"))).toMatchObject({ label: "Users", prefix: "C:\\Users" });
   });
 });
