@@ -6,26 +6,30 @@ import { api } from "../api";
 import { useConfig } from "../state";
 import { Button } from "../ui/primitives";
 
-export type UpdateControlVariant = "banner" | "header" | "settings";
+export type UpdateControlVariant = "header" | "settings";
 
-const Bar = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 ${({ theme }) => theme.space.lg}px ${({ theme }) => theme.space.sm}px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: ${({ theme }) => theme.color.surface};
-  border: 1px solid ${({ theme }) => theme.color.border};
-  color: ${({ theme }) => theme.color.text};
-  font-size: 13px;
-  line-height: 1.4;
-`;
+export interface HeaderUpdateModel {
+  kind: "download" | "restart" | "retry";
+  label: string;
+  title: string;
+}
 
-const Note = styled.span`
-  color: ${({ theme }) => theme.color.muted};
-`;
+/** Compact top-bar states. Idle and checking stay in Settings so the bar does not flicker. */
+export function headerUpdateModel(update: UpdateView, note?: string | null): HeaderUpdateModel | null {
+  if (update.status === "available" || update.status === "downloading") {
+    const version = update.version ?? "update";
+    const percent = update.percent == null ? "" : ` ${Math.round(update.percent)}%`;
+    return { kind: "download", label: `Downloading ${version}${percent}`, title: updateStatusText(update) };
+  }
+  if (update.status === "ready") {
+    const title = updateStatusText(update);
+    return { kind: "restart", label: "Restart to update", title: note ? `${title} ${note}` : title };
+  }
+  if (update.status === "error") {
+    return { kind: "retry", label: "Check for updates", title: note?.trim() || updateStatusText(update) };
+  }
+  return null;
+}
 
 const SettingsNote = styled.p`
   margin: 0;
@@ -80,34 +84,18 @@ export function UpdateControl({ variant }: { variant: UpdateControlVariant }) {
     await api().checkForUpdates();
   }
 
-  if (variant === "banner") {
-    if (update.status !== "available" && update.status !== "downloading" && update.status !== "ready") return null;
-    return (
-      <Bar>
-        <span>
-          {updateStatusText(update)}
-          {note ? <Note> {note}</Note> : null}
-        </span>
-        {label ? (
-          <Button variant="action" disabled={busy} onClick={() => void run()}>
-            {label}
-          </Button>
-        ) : null}
-      </Bar>
-    );
-  }
-
   if (variant === "header") {
-    if (update.status === "available" || update.status === "downloading") {
-      const percent = update.percent == null ? "" : ` ${Math.round(update.percent)}%`;
-      return <StatusChip title={updateStatusText(update)}>Downloading {update.version ?? "update"}{percent}</StatusChip>;
-    }
-    if (update.status === "ready") return null;
-    if (update.status !== "error") return null;
-    if (!label) return null;
+    const model = headerUpdateModel(update, note);
+    if (!model) return null;
+    if (model.kind === "download") return <StatusChip title={model.title}>{model.label}</StatusChip>;
     return (
-      <Button variant="normal" disabled={busy} title={note ?? updateStatusText(update)} onClick={() => void run()}>
-        {label}
+      <Button
+        variant={model.kind === "restart" ? "action" : "normal"}
+        disabled={busy}
+        title={model.title}
+        onClick={() => void run()}
+      >
+        {model.label}
       </Button>
     );
   }

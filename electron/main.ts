@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron"
+import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron"
 import { randomUUID } from "node:crypto"
 import { watch, type FSWatcher } from "node:fs"
 import path from "node:path"
@@ -44,6 +44,7 @@ import {
   updateFocusCheckGapMs,
   UpdateController,
 } from "../src/core/updater"
+import { applicationMenuTemplate, hidesWindowMenuBar } from "./app-menu"
 
 const isDev = !app.isPackaged
 
@@ -384,6 +385,7 @@ async function createWindow(): Promise<void> {
     minHeight: 520,
     title: "Cloudfs",
     backgroundColor: config.colorMode === "light" ? "#f4f7fb" : "#0b1220",
+    autoHideMenuBar: hidesWindowMenuBar(process.platform),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -392,6 +394,7 @@ async function createWindow(): Promise<void> {
     },
   })
   windowRef.on("close", rememberTabs)
+  if (hidesWindowMenuBar(process.platform)) windowRef.setMenuBarVisibility(false)
   if (isDev) {
     await windowRef.loadURL("http://127.0.0.1:5173")
   } else {
@@ -476,6 +479,8 @@ app.whenReady().then(async () => {
   registerIpc()
   await coordinator.restore()
   wireUpdates()
+  // The menu stays installed so copy, paste, select-all, reload, and devtools keep working after the bar is hidden.
+  Menu.setApplicationMenu(Menu.buildFromTemplate(applicationMenuTemplate(process.platform, app.name)))
   await createWindow()
 })
 

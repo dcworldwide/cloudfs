@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { asFolderKey, destinationKey, folderKey, joinKey, parentPrefix, parentSegment, parsePathText, pathSegments, pathText } from "./paths";
+import {
+  asFolderKey,
+  destinationKey,
+  folderKey,
+  joinKey,
+  parentPrefix,
+  parentSegment,
+  parsePathText,
+  pathSegments,
+  pathText,
+  sameParsedLocation,
+} from "./paths";
 
 describe("path policy", () => {
   it("keeps a trailing slash on S3 folders and omits it on FTP", () => {
@@ -37,6 +48,15 @@ describe("path policy", () => {
     expect(pathText("local", "C:\\Users", "", "win32")).toBe("C:\\Users");
     expect(parsePathText("local", "D:/Games", "win32")).toEqual({ container: "", prefix: "D:\\Games" });
     expect(parsePathText("local", "", "win32")).toEqual({ container: "", prefix: "" });
+    expect(parsePathText("local", "C:\\projects\\agsadmin\\", "win32")).toEqual({
+      container: "",
+      prefix: "C:\\projects\\agsadmin",
+    });
+    expect(parsePathText("local", "C:\\", "win32")).toEqual({ container: "", prefix: "C:\\" });
+    expect(parsePathText("local", "C:", "win32")).toEqual({ container: "", prefix: "C:\\" });
+    expect(sameParsedLocation("local", { container: "", prefix: "C:\\projects\\agsadmin" }, "C:\\projects\\agsadmin\\", "win32")).toBe(
+      true,
+    );
   });
 
   it("joins a folder copy onto S3, FTP, and a Windows drive", () => {
@@ -54,6 +74,12 @@ describe("path policy", () => {
   it("keeps an edited S3 location on the same bucket", () => {
     expect(pathText("s3", "2024/", "photos")).toBe("photos/2024/");
     expect(parsePathText("s3", "photos/2024/trips")).toEqual({ container: "photos", prefix: "2024/trips/" });
+    expect(parsePathText("s3", "photos/2024/")).toEqual({ container: "photos", prefix: "2024/" });
+    expect(parsePathText("ftp", "/incoming/drop/")).toEqual({ container: "", prefix: "/incoming/drop" });
+    expect(parsePathText("ftp", "/")).toEqual({ container: "", prefix: "" });
+    expect(sameParsedLocation("s3", { container: "photos", prefix: "2024/" }, "photos/2024")).toBe(true);
+    expect(sameParsedLocation("ftp", { container: "", prefix: "/incoming" }, "/incoming/")).toBe(true);
+    expect(sameParsedLocation("s3", { container: "photos", prefix: "2024/" }, "other/2024")).toBe(false);
     expect(pathSegments("s3", "2024/", "photos").map((part) => part.label)).toEqual(["Buckets", "photos", "2024"]);
   });
 
