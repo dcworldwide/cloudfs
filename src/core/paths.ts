@@ -133,15 +133,21 @@ export function pathSegments(provider: ProviderId, prefix: string, container = "
   return segments;
 }
 
+/** The segment above the current folder. Null when the pane is already at the root. */
+export function parentSegment(segments: PathSegment[]): PathSegment | null {
+  if (segments.length < 2) return null;
+  return segments[segments.length - 2] ?? null;
+}
+
 function localSegments(prefix: string, platform?: string): PathSegment[] {
   const windows = isWindowsPath(prefix, platform) || platform === "win32";
   if (!windows) {
     const root = prefix.startsWith("/") ? "/" : "";
     const parts = prefix.split("/").filter(Boolean);
     const segments: PathSegment[] = [{ label: root ? "/" : "Root", prefix: root }];
-    let cursor = root.replace(/\/$/, "");
+    let cursor = "";
     for (const part of parts) {
-      cursor = cursor ? `${cursor}/${part}` : part;
+      cursor = cursor ? `${cursor}/${part}` : root ? `/${part}` : part;
       segments.push({ label: part, prefix: cursor });
     }
     return segments;

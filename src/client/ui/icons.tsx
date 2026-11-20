@@ -85,6 +85,14 @@ export function PlusIcon() {
   );
 }
 
+export function UpIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" d="M12 19V6M7 11l5-5 5 5" />
+    </svg>
+  );
+}
+
 export function CopyIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">

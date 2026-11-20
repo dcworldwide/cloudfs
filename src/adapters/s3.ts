@@ -63,6 +63,9 @@ export function createS3Client(account: Account): S3Client {
   });
 }
 
+/** DeleteObjects accepts at most this many keys in one request. */
+export const S3_DELETE_BATCH = 1000;
+
 function prefixOf(prefix: string): string {
   if (!prefix) return "";
   return prefix.endsWith("/") ? prefix : `${prefix}/`;
@@ -267,17 +270,58 @@ export class S3Adapter implements StoreAdapter {
     return body as Readable;
   }
 
+  /**
+   * Delete objects. A key ending in `/` is a folder prefix: every object under it
+   * is listed (paginated, no delimiter) and removed with the zero-byte marker.
+   * DeleteObjects accepts 1000 keys, so a long prefix is sent in batches.
+   */
   async remove(account: Account, container: string, keys: string[]): Promise<void> {
     if (!keys.length) return;
     const client = this.client(account);
-    for (let i = 0; i < keys.length; i += 1000) {
-      const slice = keys.slice(i, i + 1000);
+    const resolved = new Set<string>();
+    const expanded: string[] = [];
+    const folders = keys.filter((key) => key.endsWith("/")).sort((left, right) => left.length - right.length);
+    for (const key of keys) {
+      if (!key.endsWith("/")) resolved.add(key);
+    }
+    for (const key of folders) {
+      resolved.add(key);
+      if (expanded.some((prefix) => key.startsWith(prefix))) continue;
+      expanded.push(key);
+      for (const child of await this.keysUnder(client, container, key)) resolved.add(child);
+    }
+    const all = [...resolved];
+    for (let index = 0; index < all.length; index += S3_DELETE_BATCH) {
+      const slice = all.slice(index, index + S3_DELETE_BATCH);
       await client.send(
         new DeleteObjectsCommand({
           Bucket: container,
           Delete: { Objects: slice.map((key) => ({ Key: key })) },
         }),
       );
+    }
+  }
+
+  /** Every object key under `prefix`, including a folder marker when S3 returns it. */
+  private async keysUnder(client: S3Client, container: string, prefix: string): Promise<string[]> {
+    const keys: string[] = [];
+    const seen = new Set<string>();
+    let token: string | undefined;
+    for (;;) {
+      const page = await client.send(
+        new ListObjectsV2Command({
+          Bucket: container,
+          Prefix: prefix,
+          ContinuationToken: token,
+        }),
+      );
+      for (const object of page.Contents ?? []) {
+        if (object.Key) keys.push(object.Key);
+      }
+      const next = page.IsTruncated ? page.NextContinuationToken : undefined;
+      if (!next || seen.has(next)) return keys;
+      seen.add(next);
+      token = next;
     }
   }
 

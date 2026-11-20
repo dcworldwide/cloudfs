@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MULTIPART_THRESHOLD, PART_SIZE, S3_COPY_MAX_SINGLE, type Account } from "../core/store";
 import { MemoryS3, s3Error } from "../testing/memory-s3";
 import { bufferStream, readAll } from "../testing/streams";
-import { createS3Client, S3Adapter } from "./s3";
+import { createS3Client, S3_DELETE_BATCH, S3Adapter } from "./s3";
 
 function account(): Account {
   return {
@@ -190,5 +190,64 @@ describe("S3Adapter against in-memory S3", () => {
     memory.denied.delete("photos/secret.txt");
     memory.failNext = { command: "GetObjectCommand", error: s3Error("ECONNRESET", "read ECONNRESET", 500) };
     await expect(adapter.get(account(), "photos", "secret.txt")).rejects.toThrow(/ECONNRESET/);
+  });
+
+  it("deletes a folder prefix, including nested keys and the marker, without the sibling prefix", async () => {
+    memory.createBucket("photos");
+    memory.pageSize = 1;
+    memory.putObject("photos", "album/", Buffer.alloc(0));
+    memory.putObject("photos", "album/a.txt", "a");
+    memory.putObject("photos", "album/nested/", Buffer.alloc(0));
+    memory.putObject("photos", "album/nested/b.txt", "b");
+    memory.putObject("photos", "album/empty/", Buffer.alloc(0));
+    memory.putObject("photos", "album-extra/keep.txt", "keep");
+    memory.calls.length = 0;
+    try {
+      await adapter.remove(account(), "photos", ["album/"]);
+      expect(memory.getObject("photos", "album/")).toBeUndefined();
+      expect(memory.getObject("photos", "album/a.txt")).toBeUndefined();
+      expect(memory.getObject("photos", "album/nested/")).toBeUndefined();
+      expect(memory.getObject("photos", "album/nested/b.txt")).toBeUndefined();
+      expect(memory.getObject("photos", "album/empty/")).toBeUndefined();
+      expect(memory.getObject("photos", "album-extra/keep.txt")?.toString()).toBe("keep");
+      const lists = memory.calls.filter((name) => name === "ListObjectsV2Command");
+      expect(lists.length).toBeGreaterThan(1);
+    } finally {
+      memory.pageSize = 1000;
+    }
+  });
+
+  it("deletes object keys in batches and does not list a plain file", async () => {
+    memory.createBucket("photos");
+    const keys = Array.from({ length: S3_DELETE_BATCH + 1 }, (_, index) => `bulk/${index}.txt`);
+    for (const key of keys) memory.putObject("photos", key, "x");
+    memory.calls.length = 0;
+    await adapter.remove(account(), "photos", keys);
+    expect(memory.calls.filter((name) => name === "DeleteObjectsCommand")).toHaveLength(2);
+    expect(memory.calls).not.toContain("ListObjectsV2Command");
+    expect(memory.getObject("photos", "bulk/0.txt")).toBeUndefined();
+    expect(memory.getObject("photos", `bulk/${S3_DELETE_BATCH}.txt`)).toBeUndefined();
+  });
+
+  it("pages through a wide prefix and deletes it in batches", async () => {
+    memory.createBucket("photos");
+    memory.pageSize = 2;
+    for (let index = 0; index < S3_DELETE_BATCH + 1; index += 1) {
+      memory.putObject("photos", `wide/${index}.txt`, "x");
+    }
+    memory.putObject("photos", "wide/", Buffer.alloc(0));
+    memory.putObject("photos", "keep.txt", "k");
+    memory.calls.length = 0;
+    try {
+      await adapter.remove(account(), "photos", ["wide/", "wide/nested/"]);
+      expect(memory.calls.filter((name) => name === "ListObjectsV2Command").length).toBeGreaterThan(1);
+      expect(memory.calls.filter((name) => name === "DeleteObjectsCommand")).toHaveLength(2);
+      expect(memory.getObject("photos", "wide/")).toBeUndefined();
+      expect(memory.getObject("photos", "wide/0.txt")).toBeUndefined();
+      expect(memory.getObject("photos", `wide/${S3_DELETE_BATCH}.txt`)).toBeUndefined();
+      expect(memory.getObject("photos", "keep.txt")?.toString()).toBe("k");
+    } finally {
+      memory.pageSize = 1000;
+    }
   });
 });
