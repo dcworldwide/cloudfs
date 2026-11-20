@@ -191,8 +191,10 @@ export function parsePathText(provider: ProviderId, text: string, platform?: str
     if (!trimmed) return { container: "", prefix: platform === "win32" ? "" : "/" };
     if (isWindowsPath(trimmed, platform) || /^[A-Za-z]:/.test(trimmed)) {
       const slash = trimmed.replace(/\//g, "\\");
-      if (/^[A-Za-z]:$/.test(slash)) return { container: "", prefix: `${slash}\\` };
-      return { container: "", prefix: slash.replace(/\\+$/, "") || slash };
+      const stripped = slash.replace(/\\+$/, "");
+      // `C:` and `C:\` are the drive root. A bare `C:` is not that folder.
+      if (/^[A-Za-z]:$/.test(stripped)) return { container: "", prefix: `${stripped}\\` };
+      return { container: "", prefix: stripped || slash };
     }
     return { container: "", prefix: trimmed === "/" ? "/" : trimmed.replace(/\/+$/, "") };
   }
@@ -204,6 +206,21 @@ export function parsePathText(provider: ProviderId, text: string, platform?: str
   const slash = body.indexOf("/");
   if (slash < 0) return { container: body, prefix: "" };
   return { container: body.slice(0, slash), prefix: `${body.slice(slash + 1)}/` };
+}
+
+/** True when edited text still names the folder the pane is listing. Trailing separators do not count as a change. */
+export function sameParsedLocation(
+  provider: ProviderId,
+  current: { container: string; prefix: string },
+  text: string,
+  platform?: string,
+): boolean {
+  const parsed = parsePathText(provider, text, platform);
+  if (parsed.container !== (current.container || "")) return false;
+  return (
+    pathText(provider, parsed.prefix, parsed.container, platform) ===
+    pathText(provider, current.prefix, current.container, platform)
+  );
 }
 
 /** A new folder key for mkdir. */

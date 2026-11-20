@@ -29,7 +29,7 @@ Export writes a copy you choose. Import replaces the saved stores after a confir
 
 ## Stores
 
-On Windows each mounted drive is its own source, the same way File Explorer lists them. Other systems keep one This Computer source. A local pane lists every folder it can see, including junctions whose target cannot be stat'ed. The location bar is a path you can click, copy, or edit; Enter opens what you typed. S3 takes a display name, access key, secret, region, SSL, and an optional endpoint for S3-compatible stores such as MinIO or Wasabi. FTP takes a host, port, user, password, and an optional start directory. Azure Blob and Google Cloud Storage appear in the add-store list and open an info dialog. They do not collect credentials.
+On Windows each mounted drive is its own source, the same way File Explorer lists them. Other systems keep one This Computer source. A local pane lists every folder it can see, including junctions whose target cannot be stat'ed. The location bar is a breadcrumb. Click a segment to open it. Double-click the path to copy or type a new one; Enter opens it, and a missing path stays in the field with an error. Escape, or clicking away without a change, restores the breadcrumb. S3 takes a display name, access key, secret, region, SSL, and an optional endpoint for S3-compatible stores such as MinIO or Wasabi. FTP takes a host, port, user, password, and an optional start directory. Azure Blob and Google Cloud Storage appear in the add-store list and open an info dialog. They do not collect credentials.
 
 ## Transfers
 
@@ -70,7 +70,7 @@ Do not rename `.github/workflows/release.yml`. The counter belongs to that file 
 
 ### What the installed app does
 
-A packaged app checks GitHub Releases for `dcworldwide/cloudfs` on launch and downloads a newer version in the background. The status is in Settings. When the download finishes, a bar offers **Restart to update**. Quitting the app also installs a download that is already waiting. Restart waits while a transfer is still running, then installs when the queue is idle.
+A packaged app checks GitHub Releases for `dcworldwide/cloudfs` on launch and downloads a newer version in the background. The status is in Settings. When the download finishes, **Restart to update** appears in the top bar. Quitting the app also installs a download that is already waiting. Restart waits while a transfer is still running, then installs when the queue is idle.
 
 Update checks do not run from `npm start`. That process is not a packaged build, and there is no release metadata to read. Failures are written to the updater log and shown in Settings. They do not close the app.
 

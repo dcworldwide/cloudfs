@@ -1,11 +1,12 @@
 import styled from "@emotion/styled";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ListedEntry, PaneLocator, TransferInput } from "../../../electron/preload";
-import { capabilities, joinKey, parentPrefix, parentSegment, parsePathText, pathSegments, pathText, type PathSegment } from "../../core/paths";
+import { capabilities, joinKey, parentPrefix, parentSegment, pathSegments } from "../../core/paths";
 import type { PaneState, PublicAccount, WorkspaceTab } from "../../core/store";
 import { api } from "../api";
 import { useConfig, useQueue, useWorkspace } from "../state";
-import { Breadcrumb } from "../breadcrumb";
+import { LocationEditor } from "../breadcrumb";
+import { isTypingTarget } from "../keyboard";
 import { CloudIcon, ComputerIcon, CopyIcon, FileIcon, FolderIcon, MoveIcon, PlusIcon, TrashIcon, UpIcon } from "../ui/icons";
 import { Muted, Pane, Panes } from "../ui/layout";
 import {
@@ -472,6 +473,14 @@ function FilePane({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (
+        isTypingTarget(event.target) &&
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        ["a", "c", "v", "x"].includes(event.key.toLowerCase())
+      ) {
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key === "c" || event.key === "x")) {
         const hovered = document.querySelector(`[data-pane="${side}"]:hover`);
         if (!hovered || selected.length === 0) return;
@@ -672,7 +681,7 @@ function FilePane({
           platform={platform}
           onSelect={(next) => workspace.updatePane(side, next)}
         />
-        <LocationField
+        <LocationEditor
           pane={pane}
           platform={platform}
           onSelect={(patch) => workspace.updatePane(side, patch)}
@@ -1010,57 +1019,5 @@ function SourceMenu({
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
-  );
-}
-
-function LocationField({
-  pane,
-  platform,
-  onSelect,
-}: {
-  pane: PaneState;
-  platform: string;
-  onSelect: (patch: Partial<PaneState>) => void;
-}) {
-  const host = platform === "win32" ? "win32" : "linux";
-  const shown = pathText(pane.provider, pane.prefix, pane.container, host);
-  const [draft, setDraft] = useState(shown);
-  const [editing, setEditing] = useState(false);
-  useEffect(() => {
-    if (!editing) setDraft(shown);
-  }, [shown, editing]);
-
-  function commit(text: string) {
-    setEditing(false);
-    const parsed = parsePathText(pane.provider, text, host);
-    onSelect({ container: parsed.container, prefix: parsed.prefix });
-  }
-
-  function jump(segment: PathSegment) {
-    onSelect({
-      container: segment.container ?? pane.container,
-      prefix: segment.prefix,
-    });
-  }
-
-  const segments = pathSegments(pane.provider, pane.prefix, pane.container, host);
-  return (
-    <Breadcrumb
-      segments={segments}
-      separator={pane.provider === "local" && host === "win32" ? "\\" : "/"}
-      editing={editing}
-      draft={draft}
-      onDraft={setDraft}
-      onBeginEdit={() => {
-        setDraft(shown);
-        setEditing(true);
-      }}
-      onCommit={commit}
-      onCancel={() => {
-        setDraft(shown);
-        setEditing(false);
-      }}
-      onNavigate={jump}
-    />
   );
 }

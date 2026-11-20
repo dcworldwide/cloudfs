@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abbreviateMiddle, CRUMB_LABEL_MAX, endScroll } from "./breadcrumb";
+import { abbreviateMiddle, CRUMB_LABEL_MAX, endScroll, locationFailureMessage } from "./breadcrumb";
 
 describe("abbreviateMiddle", () => {
   it("leaves a short label unchanged", () => {
@@ -21,6 +21,18 @@ describe("abbreviateMiddle", () => {
   it("does not split a surrogate pair", () => {
     expect(Array.from(abbreviateMiddle("🙂".repeat(10), 5))).toEqual(["🙂", "🙂", "…", "🙂", "🙂"]);
     expect(abbreviateMiddle("abcdef", 1)).toBe("…");
+  });
+});
+
+describe("locationFailureMessage", () => {
+  it("turns a missing or blocked folder into a short inline error", () => {
+    expect(locationFailureMessage(new Error("ENOENT: no such file or directory, scandir 'C:\\missing'"))).toBe(
+      "That location doesn't exist.",
+    );
+    expect(locationFailureMessage(new Error("ENOTDIR: not a directory"))).toBe("That location isn't a folder.");
+    expect(locationFailureMessage(new Error("AccessDenied"))).toBe("That location isn't reachable.");
+    expect(locationFailureMessage(new Error("Error invoking remote method 'fs:list': bucket gone"))).toBe("bucket gone");
+    expect(locationFailureMessage(null)).toBe("Could not open that location.");
   });
 });
 

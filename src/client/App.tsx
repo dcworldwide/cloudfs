@@ -10,7 +10,7 @@ import { UpdateControl } from "./screens/UpdateControl";
 import { GearIcon, TransfersIcon } from "./ui/icons";
 import { AppStateProvider } from "./state";
 import { AppThemeProvider } from "./theme-context";
-import { AppShell, Brand, Row, TopBar, Version, Wordmark } from "./ui/layout";
+import { AppShell, Row, TopBar, Version } from "./ui/layout";
 import { Button, IconButton, IconToggle, Toast, Tooltip } from "./ui/primitives";
 import { Toaster } from "./ui/toast";
 
@@ -73,14 +73,11 @@ function Shell({ state }: { state: AppState }) {
       <HashRouter>
         <AppShell>
           <TopBar>
-            <Brand>
-              <Wordmark>Cloudfs</Wordmark>
-              <Version>{state.version}</Version>
-            </Brand>
             <Routes>
               <Route path="*" element={<TabBar />} />
             </Routes>
-            <Row>
+            <Row data-testid="top-actions">
+              <Version>{state.version}</Version>
               <UpdateControl variant="header" />
               <IconToggle
                 title={queuePinned ? "Close transfers" : "Show transfers"}
@@ -98,7 +95,6 @@ function Shell({ state }: { state: AppState }) {
               </IconButton>
             </Row>
           </TopBar>
-          <UpdateControl variant="banner" />
           <Routes>
             <Route path="/" element={<Explorer queuePinned={queuePinned} queueDismissed={queueDismissed} onCloseQueue={closeQueue} />} />
             <Route path="/stores/new" element={<Explorer queuePinned={queuePinned} queueDismissed={queueDismissed} onCloseQueue={closeQueue} />} />

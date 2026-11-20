@@ -19,20 +19,6 @@ export const TopBar = styled.header`
   background: transparent;
 `;
 
-export const Brand = styled.div`
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  min-width: 0;
-`;
-
-export const Wordmark = styled.span`
-  font-weight: 590;
-  font-size: 13px;
-  letter-spacing: -0.01em;
-  line-height: 1;
-`;
-
 export const Version = styled.span`
   font-size: 11px;
   font-weight: 450;
